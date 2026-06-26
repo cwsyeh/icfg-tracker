@@ -49,15 +49,23 @@ export default function PropertyView({ property: p }: Props) {
     const grossYield = val > 0 && grossRent > 0 ? (grossRent / val) * 100 : null
     const netYield = val > 0 && grossRent > 0 ? (netResult / val) * 100 : null
 
-    // Determine the 5-year chart window — anchor to sold FY if sold, otherwise latest
+    // Chart window: sold → full ownership life; active → 10-year window
     const soldDate = p.property.sold_date
     const soldPrice = p.property.sold_price
     const soldFy = soldDate
       ? (() => { const [y, m] = soldDate.split('-').map(Number); return `FY${String(m >= 7 ? y + 1 : y).slice(-2)}` })()
       : null
     const soldFyIdx = soldFy ? FY_CHART_RANGE.indexOf(soldFy as typeof FY_CHART_RANGE[number]) : -1
-    const anchorIdx = soldFyIdx >= 0 ? soldFyIdx : FY_CHART_RANGE.length - 1
-    const chartFYs = FY_CHART_RANGE.slice(Math.max(0, anchorIdx - 9), anchorIdx + 1)
+
+    const startDate = p.property.settlement_date ?? p.property.purchase_date
+    const purchaseFy = startDate
+      ? (() => { const [y, m] = startDate.split('-').map(Number); return `FY${String(m >= 7 ? y + 1 : y).slice(-2)}` })()
+      : null
+    const purchaseFyIdx = purchaseFy ? FY_CHART_RANGE.indexOf(purchaseFy as typeof FY_CHART_RANGE[number]) : -1
+
+    const chartFYs = soldFy && soldFyIdx >= 0
+      ? FY_CHART_RANGE.slice(purchaseFyIdx >= 0 ? purchaseFyIdx : 0, soldFyIdx + 1)
+      : FY_CHART_RANGE.slice(Math.max(0, FY_CHART_RANGE.length - 10))
 
     const chartData = chartFYs.map(fy => {
       const isSalePoint = soldDate && soldPrice && fy === soldFy
@@ -68,14 +76,21 @@ export default function PropertyView({ property: p }: Props) {
             const formalVal = valuationAsOf(p.allValuations, endDate, null)
             if (formalVal !== null) return formalVal
             if (!p.property.purchase_date || p.property.purchase_date > endDate) return null
-            const landPrice = p.property.purchase_price ?? 0
-            if (p.property.property_type !== 'house_and_land') return landPrice || null
-            const drawn = p.progressPayments
-              .filter(pp => pp.drawn_date && pp.drawn_date <= endDate)
-              .reduce((s, pp) => s + ((pp.bank_amount !== null || pp.self_amount !== null)
-                ? (pp.bank_amount ?? 0) + (pp.self_amount ?? 0)
-                : (pp.amount ?? 0)), 0)
-            return (landPrice + drawn) || null
+            const prop = p.property
+            const settledByEnd = prop.settlement_date ? prop.settlement_date <= endDate : true
+            if (prop.property_type === 'off_the_plan') {
+              return settledByEnd ? (prop.purchase_price ?? 0) || null : (prop.deposit_paid ?? 0) || null
+            }
+            if (prop.property_type === 'house_and_land') {
+              const landPrice = prop.purchase_price ?? 0
+              const drawn = p.progressPayments
+                .filter(pp => pp.drawn_date && pp.drawn_date <= endDate)
+                .reduce((s, pp) => s + ((pp.bank_amount !== null || pp.self_amount !== null)
+                  ? (pp.bank_amount ?? 0) + (pp.self_amount ?? 0)
+                  : (pp.amount ?? 0)), 0)
+              return (landPrice + drawn) || null
+            }
+            return (prop.purchase_price ?? 0) || null
           })()
       const propDebt = p.loans.reduce((ls, loan) => {
         if (loan.start_date > endDate) return ls
@@ -108,7 +123,7 @@ export default function PropertyView({ property: p }: Props) {
       }
     }).filter(Boolean) as { fy: string; Value?: number; Equity?: number; Debt?: number; cashNet: number | null; nonCash: number | null; netResult: number | null; grossYield?: number }[]
 
-    return { val, debt, equity, ltv, grossRent, grossYield, netYield, netResult, latestFy, chartData, soldFy }
+    return { val, debt, equity, ltv, grossRent, grossYield, netYield, netResult, latestFy, chartData, soldFy, purchaseFy }
   }, [p])
 
   const prop = p.property
@@ -153,7 +168,7 @@ export default function PropertyView({ property: p }: Props) {
           <div style={CARD}>
             <div style={{ padding: '16px 22px 4px' }}>
               <div style={{ fontSize: 14, fontWeight: 800 }}>Capital Growth</div>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>{data.soldFy ? `Property value, debt and equity to ${data.soldFy} (sold)` : 'Property value, debt and equity over 10 years'}</div>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>{data.soldFy ? `Full ownership period${data.purchaseFy ? ` · ${data.purchaseFy}–${data.soldFy}` : ''} (sold)` : 'Property value, debt and equity over 10 years'}</div>
             </div>
             <div style={{ padding: '8px 22px 20px' }}>
               <ResponsiveContainer width="100%" height={200}>
