@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { calculateLoanBalance, getIOExpiryDate } from '@/lib/utils/finance'
-import type { Property, Loan, Transaction, Valuation, DepreciationSchedule, PropertyAcquisitionCost, LoanSecurity } from '@/lib/types/database'
+import type { Property, Loan, Transaction, Valuation, DepreciationSchedule, PropertyAcquisitionCost, LoanSecurity, ConstructionProgressPayment } from '@/lib/types/database'
 import ReportsPage from '@/components/reports/ReportsPage'
 
 export default async function Reports() {
@@ -35,6 +35,7 @@ export default async function Reports() {
     { data: transactions },
     { data: depreciation },
     { data: acquisitionCosts },
+    { data: progressPayments },
   ] = await Promise.all([
     supabase.from('valuations').select('*').in('property_id', propertyIds).order('valuation_date', { ascending: false }),
     supabase.from('loans').select('*').in('tax_property_id', propertyIds),
@@ -42,6 +43,7 @@ export default async function Reports() {
     supabase.from('transactions').select('*').in('property_id', propertyIds).gte('transaction_date', '2019-07-01').order('transaction_date', { ascending: true }),
     supabase.from('depreciation_schedules').select('*').in('property_id', propertyIds),
     supabase.from('property_acquisition_costs').select('*').in('property_id', propertyIds),
+    supabase.from('construction_progress_payments').select('*').in('property_id', propertyIds).order('sort_order', { ascending: true }),
   ])
 
   // Fetch loan securities for all loans
@@ -102,6 +104,8 @@ export default async function Reports() {
       depreciation: ((depreciation ?? []).filter(d => d.property_id === prop.id) as DepreciationSchedule[]),
       allValuations: propValuations,
       acquisitionCosts: ((acquisitionCosts ?? []).filter(c => c.property_id === prop.id) as PropertyAcquisitionCost[]),
+      progressPayments: ((progressPayments ?? []).filter(pp => pp.property_id === prop.id) as ConstructionProgressPayment[]),
+      loans: propLoans,
     }
   })
 

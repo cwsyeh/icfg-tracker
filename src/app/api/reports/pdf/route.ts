@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { calculateLoanBalance, getIOExpiryDate, formatCurrency, formatCompact } from '@/lib/utils/finance'
 import { ATO_EXPENSE_LABELS } from '@/lib/utils/ato-categories'
-import type { Property, Loan, Transaction, Valuation, DepreciationSchedule, PropertyAcquisitionCost } from '@/lib/types/database'
+import type { Property, Loan, Transaction, Valuation, DepreciationSchedule, PropertyAcquisitionCost, ConstructionProgressPayment } from '@/lib/types/database'
 import type { PropertyReport, FyLabel } from '@/components/reports/types'
 import { fyFullYear } from '@/components/reports/types'
 
@@ -33,6 +33,7 @@ async function buildPropertyReports(
     { data: depreciation },
     { data: acquisitionCosts },
     { data: loanSecurities },
+    { data: progressPayments },
   ] = await Promise.all([
     supabase.from('valuations').select('*').in('property_id', propertyIds).order('valuation_date', { ascending: false }),
     supabase.from('loans').select('*').in('tax_property_id', propertyIds),
@@ -40,6 +41,7 @@ async function buildPropertyReports(
     supabase.from('depreciation_schedules').select('*').in('property_id', propertyIds),
     supabase.from('property_acquisition_costs').select('*').in('property_id', propertyIds),
     supabase.from('loan_securities').select('*'),
+    supabase.from('construction_progress_payments').select('*').in('property_id', propertyIds).order('sort_order', { ascending: true }),
   ])
 
   const allLoanIds = (loans ?? []).map(l => l.id)
@@ -92,6 +94,8 @@ async function buildPropertyReports(
       depreciation: (depreciation ?? []).filter(d => d.property_id === prop.id) as DepreciationSchedule[],
       allValuations: propValuations,
       acquisitionCosts: (acquisitionCosts ?? []).filter(c => c.property_id === prop.id) as PropertyAcquisitionCost[],
+      progressPayments: (progressPayments ?? []).filter(pp => pp.property_id === prop.id) as ConstructionProgressPayment[],
+      loans: propLoans,
     }
   })
 }
@@ -178,11 +182,22 @@ async function buildTaxPdf(p: PropertyReport, fy: FyLabel, ownerName: string) {
 
   // ── Cost Base ────────────────────────────────────────────────────────────
   const showCostBase = prop.usage !== 'ppor' && (prop.purchase_price || p.acquisitionCosts.length > 0)
-  const purchase = prop.purchase_price ?? 0
+  const landPrice = prop.purchase_price ?? 0
+  const drawnBuildCost = prop.property_type === 'house_and_land'
+    ? p.progressPayments
+        .filter(pp => pp.drawn_date !== null)
+        .reduce((s, pp) => {
+          const drawn = (pp.bank_amount !== null || pp.self_amount !== null)
+            ? (pp.bank_amount ?? 0) + (pp.self_amount ?? 0)
+            : (pp.amount ?? 0)
+          return s + drawn
+        }, 0)
+    : 0
+  const purchase = landPrice + drawnBuildCost
   const acquisitionTotal = p.acquisitionCosts.reduce((s, c) => s + c.amount, 0)
   const capitalImprovements = p.allTransactions
     .filter(t => t.type === 'capital_expense' && t.financial_year <= fy)
-    .reduce((s, t) => s + t.amount, 0)
+    .reduce((s, t) => s + Math.abs(t.amount), 0)
   const cumulativeDiv40 = p.depreciation
     .filter(d => fyFullYear(d.financial_year as FyLabel) <= fyYear)
     .reduce((s, d) => s + (d.plant_equipment_amount ?? 0), 0)
@@ -428,7 +443,7 @@ async function buildTaxPdf(p: PropertyReport, fy: FyLabel, ownerName: string) {
           R(View, { key: 'cb-col', style: { flex: 2 } },
             R(Text, { style: { ...s.secTitle, marginTop: 0 } }, 'Adjusted Cost Base'),
             ...[
-              { label: 'Purchase price', value: formatCurrency(purchase) },
+              { label: 'Purchase price', value: formatCurrency(purchase), sub: prop.property_type === 'house_and_land' ? `Land: ${formatCurrency(landPrice)} · Build drawn: ${formatCurrency(drawnBuildCost)}` : undefined },
               { label: 'Acquisition costs', value: formatCurrency(acquisitionTotal), sub: 'Stamp duty, legal, etc.' },
               { label: 'Capital improvements', value: formatCurrency(capitalImprovements), sub: 'Cumulative to date' },
               { label: 'Less: Div 40 depreciation', value: cumulativeDiv40 > 0 ? `(${formatCurrency(cumulativeDiv40)})` : '—', neg: cumulativeDiv40 > 0 },

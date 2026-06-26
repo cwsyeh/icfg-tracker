@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, ReferenceLine } from 'recharts'
 import { formatCurrency, calculateLoanBalance, getFinancialYear } from '@/lib/utils/finance'
-import type { Property, Loan, Valuation, Transaction, DepreciationSchedule, LoanBalance, LoanSecurity, PropertyAcquisitionCost, AcquisitionCostType, ConstructionProgressPayment } from '@/lib/types/database'
+import type { Property, Loan, Valuation, Transaction, DepreciationSchedule, LoanBalance, LoanSecurity, PropertyAcquisitionCost, AcquisitionCostType, PropertySaleCost, SaleCostType, ConstructionProgressPayment } from '@/lib/types/database'
 
 type EnrichedLoan = Loan & { current_balance: number; io_expiry_date: string | null }
 
@@ -116,15 +116,21 @@ interface ValuationPoint {
   stageName?: string
 }
 
-function ValuationChart({ valuations, purchasePrice, purchaseDate, constructionPoints }: {
+function ValuationChart({ valuations, purchasePrice, purchaseDate, constructionPoints, completionDate, completionBaseValue, soldDate, soldPrice }: {
   valuations: Valuation[]
   purchasePrice: number | null
   purchaseDate: string | null
   constructionPoints?: ValuationPoint[]
+  completionDate?: string | null
+  completionBaseValue?: number
+  soldDate?: string | null
+  soldPrice?: number | null
 }) {
   const isHnL = constructionPoints !== undefined
+  const isConstructionComplete = isHnL && !!completionDate && completionBaseValue != null && completionBaseValue > 0
 
   const data = useMemo(() => {
+    const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-AU', { month: 'short', year: '2-digit' })
     const points: ValuationPoint[] = []
     if (constructionPoints && constructionPoints.length > 0) {
       points.push(...constructionPoints)
@@ -134,8 +140,11 @@ function ValuationChart({ valuations, purchasePrice, purchaseDate, constructionP
     ;[...valuations].reverse().forEach(v => {
       points.push({ date: v.valuation_date, value: v.amount, label: new Date(v.valuation_date).getFullYear().toString(), stageName: 'Valuation' })
     })
+    if (soldDate && soldPrice) {
+      points.push({ date: soldDate, value: soldPrice, label: fmtDate(soldDate), stageName: 'Sale' })
+    }
     return points
-  }, [valuations, purchasePrice, purchaseDate, constructionPoints])
+  }, [valuations, purchasePrice, purchaseDate, constructionPoints, soldDate, soldPrice])
 
   if (data.length < 2) return (
     <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: 12, textAlign: 'center' }}>
@@ -143,23 +152,35 @@ function ValuationChart({ valuations, purchasePrice, purchaseDate, constructionP
     </div>
   )
 
-  const baseValue = data[0].value
+  const growthBase = isConstructionComplete ? completionBaseValue! : data[0].value
   const latestValue = data[data.length - 1].value
-  const growthPct = ((latestValue - baseValue) / baseValue * 100).toFixed(1)
-  const growthPositive = latestValue >= baseValue
+  const growthPct = ((latestValue - growthBase) / growthBase * 100).toFixed(1)
+  const growthPositive = latestValue >= growthBase
+
+  const growthLabel = isConstructionComplete
+    ? 'Growth since completion'
+    : isHnL
+      ? 'Growth since land settlement'
+      : 'Growth since purchase'
+
+  const basePriceLabel = isConstructionComplete
+    ? 'Land + build cost'
+    : isHnL
+      ? 'Land price'
+      : 'Purchase price'
 
   return (
     <div>
       <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
         <div>
-          <div style={lbl}>{isHnL ? 'Growth since land settlement' : 'Growth since purchase'}</div>
+          <div style={lbl}>{growthLabel}</div>
           <div style={{ fontSize: 16, fontWeight: 800, color: growthPositive ? '#15803d' : '#c8332a' }}>
             {growthPositive ? '+' : ''}{growthPct}%
           </div>
         </div>
         <div>
-          <div style={lbl}>{isHnL ? 'Land price' : 'Purchase price'}</div>
-          <div style={{ fontSize: 16, fontWeight: 800 }}>{formatCurrency(baseValue)}</div>
+          <div style={lbl}>{basePriceLabel}</div>
+          <div style={{ fontSize: 16, fontWeight: 800 }}>{formatCurrency(isConstructionComplete ? completionBaseValue! : data[0].value)}</div>
         </div>
       </div>
       <ResponsiveContainer width="100%" height={130}>
@@ -845,6 +866,27 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
       .finally(() => setAcqLoading(false))
   }, [property.id])
 
+  // ── Sale costs ──
+  const SALE_LABELS: Record<SaleCostType, string> = {
+    agent_commission: 'Agent commission',
+    legal_conveyancing: 'Legal / conveyancing',
+    advertising: 'Advertising / marketing',
+    auction_fees: 'Auction fees',
+    other: 'Other',
+  }
+  const [saleCosts, setSaleCosts] = useState<PropertySaleCost[]>([])
+  const [saleOthersExpanded, setSaleOthersExpanded] = useState(false)
+  const [editingSaleCosts, setEditingSaleCosts] = useState(false)
+  const [saleForm, setSaleForm] = useState<{ type: SaleCostType; amount: string; description: string }[]>([])
+  const [saleError, setSaleError] = useState<string | null>(null)
+  const [saleSaving, setSaleSaving] = useState(false)
+
+  useEffect(() => {
+    fetch(`/api/properties/sale-costs?propertyId=${property.id}`)
+      .then(r => r.json())
+      .then(d => { if (d.costs) setSaleCosts(d.costs) })
+  }, [property.id])
+
   const [progressPayments, setProgressPayments] = useState<ConstructionProgressPayment[]>([])
   const [ppLoading, setPpLoading] = useState(false)
 
@@ -863,7 +905,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
   }, [property.construction_status])
 
   const isArchived = property.status === 'archived'
-  const isReadOnly = isArchived || property.status === 'sold'
+  const isReadOnly = isArchived
 
   // When no formal valuation exists, fall back to purchase cost (land + build contract for H&L)
   const purchaseCostFallback = (property.purchase_price ?? 0) + (property.property_type === 'house_and_land' ? (property.construction_contract_amount ?? 0) : 0)
@@ -920,7 +962,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
   // ── Property lifecycle modals ──
   const [showActionsMenu, setShowActionsMenu] = useState(false)
   const [showSoldModal, setShowSoldModal] = useState(false)
-  const [soldForm, setSoldForm] = useState({ sold_date: '', sold_price: '' })
+  const [soldForm, setSoldForm] = useState({ sold_date: '', sold_price: '', agent_commission: '', legal_conveyancing: '', advertising: '', auction_fees: '' })
   const [soldSaving, setSoldSaving] = useState(false)
   const [soldError, setSoldError] = useState<string | null>(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
@@ -937,8 +979,22 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
         body: JSON.stringify({ propertyId: property.id, updates: { status: 'sold', sold_date: soldForm.sold_date, sold_price: soldForm.sold_price ? parseFloat(soldForm.sold_price) : null } })
       })
       const data = await res.json()
-      if (data.success) { setShowSoldModal(false); router.refresh() }
-      else setSoldError(data.error ?? 'Save failed')
+      if (!data.success) { setSoldError(data.error ?? 'Save failed'); return }
+      // Save any sale costs entered in the modal
+      const costEntries: { type: SaleCostType; amount: number; description: null }[] = []
+      const costFields: [keyof typeof soldForm, SaleCostType][] = [
+        ['agent_commission', 'agent_commission'], ['legal_conveyancing', 'legal_conveyancing'],
+        ['advertising', 'advertising'], ['auction_fees', 'auction_fees'],
+      ]
+      for (const [field, type] of costFields) {
+        const val = parseFloat(soldForm[field])
+        if (!isNaN(val) && val > 0) costEntries.push({ type, amount: val, description: null })
+      }
+      if (costEntries.length > 0) {
+        await fetch('/api/properties/sale-costs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ propertyId: property.id, costs: costEntries }) })
+        setSaleCosts(costEntries.map(c => ({ ...c, id: '', property_id: property.id, date: null, created_at: '' }) as PropertySaleCost))
+      }
+      setShowSoldModal(false); router.refresh()
     } catch { setSoldError('Network error') }
     finally { setSoldSaving(false) }
   }
@@ -949,6 +1005,14 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
       body: JSON.stringify({ propertyId: property.id, updates: { status: 'archived' } })
     })
     router.push('/portfolio')
+  }
+
+  async function unsaleProperty() {
+    await fetch('/api/properties/update', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ propertyId: property.id, updates: { status: 'active', sold_date: null, sold_price: null } })
+    })
+    router.refresh()
   }
 
   async function restoreProperty() {
@@ -1530,7 +1594,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
     finally { setEditSaving(false) }
   }
 
-  const LOAN_REQUIRED_TYPES = ['interest_expense', 'principal_payment', 'bank_fees']
+  const LOAN_REQUIRED_TYPES = ['interest_expense', 'principal_payment']
 
   async function saveAdd() {
     const amt = parseFloat(editForm.amount)
@@ -1685,6 +1749,12 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
   }, [transactions, filterSearch, filterType, filterFY, sortCol, sortDir])
 
   const chartTransactions = useMemo(() => {
+    if (filterFY) {
+      const fyNum = parseInt(filterFY.slice(2))
+      const fyStart = `${1999 + fyNum}-07-01`
+      const fyEnd = `${2000 + fyNum}-06-30`
+      return transactions.filter(tx => tx.financial_year === filterFY && tx.transaction_date >= fyStart && tx.transaction_date <= fyEnd)
+    }
     if (!chartPeriod) return transactions
     const now = new Date()
     const pad = (n: number) => String(n).padStart(2, '0')
@@ -1695,7 +1765,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
     else if (chartPeriod === '6m') from = ymd(new Date(now.getFullYear(), now.getMonth() - 5, 1))
     else if (chartPeriod === 'fy') from = now.getMonth() >= 6 ? `${now.getFullYear()}-07-01` : `${now.getFullYear() - 1}-07-01`
     return from ? transactions.filter(tx => tx.transaction_date >= from) : transactions
-  }, [transactions, chartPeriod])
+  }, [transactions, chartPeriod, filterFY])
 
   const totalPages = Math.max(1, Math.ceil(visibleTransactions.length / PAGE_SIZE))
   const pagedTransactions = visibleTransactions.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -3315,7 +3385,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                   // Only confirmed actual interest goes into the cost base
                   const capInterest = capResolved.actual
                   const costBase = propertyValue + totalAcq + capInterest + totalCapEx - totalDepr
-                  return totalAcq > 0 || totalCapEx > 0 || isHnL ? (
+                  return acquisitionCosts.length > 0 || totalCapEx > 0 || isHnL ? (
                     <div style={{ paddingTop: 10, borderTop: '1px solid #f0f2f7' }}>
                       <div style={{ ...sHead, marginBottom: 8 }}>Cost Base</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -3325,7 +3395,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                           <span>{formatCurrency(propertyValue)}</span>
                         </div>
                         {/* Line 2: Acquisition & Holding (actual only) */}
-                        {(totalAcq > 0 || capInterest > 0) && (
+                        {(acquisitionCosts.length > 0 || capInterest > 0) && (
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
                             <span style={{ color: '#5c6478' }}>Acquisition{capInterest > 0 ? ' & holding' : ''}</span>
                             <span>{formatCurrency(totalAcq + capInterest)}</span>
@@ -3348,6 +3418,95 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                 })()}
 
               </div>
+              {property.status === 'sold' ? (() => {
+                const totalSaleCosts = saleCosts.reduce((s, c) => s + c.amount, 0)
+                const netProceeds = (property.sold_price ?? 0) - totalSaleCosts
+                const totalAcqSale = acquisitionCosts.reduce((s, c) => s + c.amount, 0)
+                const totalCapExSale = transactions.filter(tx => tx.type === 'capital_expense').reduce((s, tx) => s + Math.abs(tx.amount), 0)
+                const totalDeprSale = depreciation.filter(d => d.financial_year <= currentFYInfo().label).reduce((s, d) => s + d.division_43_amount + d.plant_equipment_amount, 0)
+                const contractAmtSale = progressPayments.reduce((s, p) => s + (p.amount ?? 0), 0)
+                const costBaseSale = (property.purchase_price ?? 0) + contractAmtSale + totalAcqSale + totalCapExSale - totalDeprSale
+                const realisedGain = netProceeds - costBaseSale
+                const sRow = (label: string, value: string, color?: string) => (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+                    <span style={{ color: '#5c6478' }}>{label}</span>
+                    <span style={{ color: color ?? '#1a1e2e' }}>{value}</span>
+                  </div>
+                )
+                return (
+                  <div style={{ ...card, marginBottom: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                      <h3 style={{ fontSize: 13.5, fontWeight: 800, margin: 0 }}>Sale &amp; Capital Gain</h3>
+                      {!isReadOnly && (
+                        <button onClick={() => { setSaleForm(saleCosts.map(c => ({ type: c.type, amount: String(c.amount), description: c.description ?? '' }))); setSoldForm(f => ({ ...f, sold_date: property.sold_date ?? '', sold_price: property.sold_price != null ? String(property.sold_price) : '' })); setSaleError(null); setEditingSaleCosts(true) }}
+                          style={{ padding: '5px 12px', background: BLUE, color: '#fff', border: 'none', borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>Edit</button>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '.07em', marginBottom: 2 }}>Gross proceeds</div>
+                      {property.sold_price != null
+                        ? sRow('Sale price', formatCurrency(property.sold_price))
+                        : <div style={{ fontSize: 11.5, color: '#9ca3af' }}>No sale price recorded.</div>}
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '.07em', marginTop: 8, marginBottom: 2 }}>Sale costs</div>
+                      {saleCosts.length > 0 ? (() => {
+                        const named = saleCosts.filter(c => c.type !== 'other')
+                        const others = saleCosts.filter(c => c.type === 'other')
+                        const othersTotal = others.reduce((s, c) => s + c.amount, 0)
+                        return (
+                          <>
+                            {named.map((c, i) => <div key={i}>{sRow(SALE_LABELS[c.type], `− ${formatCurrency(c.amount)}`, '#c8332a')}</div>)}
+                            {others.length > 0 && (
+                              <>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, alignItems: 'center' }}>
+                                  <button onClick={() => setSaleOthersExpanded(v => !v)}
+                                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12.5, color: '#5c6478', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <span style={{ fontSize: 10, display: 'inline-block', transform: saleOthersExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .15s' }}>▶</span>
+                                    Other{others.length > 1 ? ` (${others.length})` : ''}
+                                  </button>
+                                  <span style={{ color: '#c8332a' }}>− {formatCurrency(othersTotal)}</span>
+                                </div>
+                                {saleOthersExpanded && others.map((c, i) => (
+                                  <div key={i} style={{ paddingLeft: 16 }}>{sRow(c.description || 'Other', `− ${formatCurrency(c.amount)}`, '#c8332a')}</div>
+                                ))}
+                              </>
+                            )}
+                          </>
+                        )
+                      })() : <div style={{ fontSize: 11.5, color: '#9ca3af' }}>No sale costs recorded.</div>}
+                      {saleCosts.length > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 700, paddingTop: 5, borderTop: '1px solid #f0f2f7', marginTop: 1, color: '#374151' }}>
+                          <span>Sale costs total</span><span>− {formatCurrency(totalSaleCosts)}</span>
+                        </div>
+                      )}
+                      {property.sold_price != null && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 800, paddingTop: 8, marginTop: 4, borderTop: '2px solid #e4e7f0' }}>
+                          <span>Net proceeds</span><span>{formatCurrency(netProceeds)}</span>
+                        </div>
+                      )}
+                      {property.sold_price != null && property.purchase_price != null && (
+                        <>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '.07em', marginTop: 10, marginBottom: 2 }}>Capital gain / loss</div>
+                          {sRow('Net proceeds', formatCurrency(netProceeds))}
+                          {sRow('Less: adjusted cost base', `− ${formatCurrency(costBaseSale)}`)}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, fontWeight: 800, paddingTop: 8, marginTop: 4, borderTop: '2px solid #e4e7f0' }}>
+                            <span>Realised {realisedGain >= 0 ? 'gain' : 'loss'}</span>
+                            <span style={{ color: realisedGain >= 0 ? '#15803d' : '#c8332a' }}>
+                              {realisedGain >= 0 ? '+' : ''}{formatCurrency(realisedGain)}
+                            </span>
+                          </div>
+                          {realisedGain > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#5c6478', marginTop: 4 }}>
+                              <span>50% CGT discount (if held &gt;12 months)</span>
+                              <span style={{ fontWeight: 600, color: '#15803d' }}>+{formatCurrency(realisedGain / 2)}</span>
+                            </div>
+                          )}
+                          <div style={{ fontSize: 10.5, color: '#9ca3af', marginTop: 6 }}>Indicative only — consult your accountant for final CGT position.</div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )
+              })() : (
               <div style={{ ...card, marginBottom: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                   <h3 style={{ fontSize: 13.5, fontWeight: 800, margin: 0 }}>Insurance</h3>
@@ -3393,6 +3552,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                   </>
                 )}
               </div>
+              )}
             </div>
           </div>
 
@@ -3467,12 +3627,19 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
 
                   hnlPoints = pts
                 }
+                const hnlCompletionBase = hnlPoints && hnlPoints.length > 0
+                  ? hnlPoints[hnlPoints.length - 1].value
+                  : undefined
                 return (
                   <ValuationChart
                     valuations={valuations}
                     purchasePrice={property.purchase_price}
                     purchaseDate={property.purchase_date}
                     constructionPoints={hnlPoints}
+                    completionDate={property.construction_status === 'completed' ? property.construction_completion_date : null}
+                    completionBaseValue={hnlCompletionBase}
+                    soldDate={property.sold_date}
+                    soldPrice={property.sold_price}
                   />
                 )
               })()}
@@ -3945,11 +4112,14 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: 14, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(v.amount)}</div>
-                        {i < valuations.length - 1 && (
-                          <div style={{ fontSize: 11, color: '#15803d', marginTop: 2 }}>
-                            +{((v.amount - valuations[i + 1].amount) / valuations[i + 1].amount * 100).toFixed(1)}% vs prior
-                          </div>
-                        )}
+                        {i < valuations.length - 1 && (() => {
+                          const pct = (v.amount - valuations[i + 1].amount) / valuations[i + 1].amount * 100
+                          return (
+                            <div style={{ fontSize: 11, color: pct >= 0 ? '#15803d' : '#dc2626', marginTop: 2 }}>
+                              {pct >= 0 ? '+' : ''}{pct.toFixed(1)}% vs prior
+                            </div>
+                          )
+                        })()}
                       </div>
                       {!isReadOnly && (
                         <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -4038,7 +4208,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
 
                     {/* Acquisition */}
                     {sectionLabel('Acquisition')}
-                    {totalAcq > 0 ? (() => {
+                    {acquisitionCosts.length > 0 ? (() => {
                       const named = acquisitionCosts.filter(c => c.type !== 'other')
                       const others = acquisitionCosts.filter(c => c.type === 'other')
                       const othersTotal = others.reduce((s, c) => s + c.amount, 0)
@@ -4066,7 +4236,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                       )
                     })()
                       : <div style={{ fontSize: 11.5, color: '#9ca3af' }}>No acquisition costs recorded.</div>}
-                    {totalAcq > 0 && subtotalRow('Acquisition total', totalAcq)}
+                    {acquisitionCosts.length > 0 && subtotalRow('Acquisition total', totalAcq)}
 
                     {/* Holding */}
                     {isHnL && (
@@ -4156,6 +4326,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                 </div>
               )
             })()}
+
 
           </div>
         </div>
@@ -4428,7 +4599,8 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
 
             {/* Period label */}
             <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 12 }}>
-              {chartPeriod === 'month' ? new Date().toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
+              {filterFY ? filterFY
+                : chartPeriod === 'month' ? new Date().toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
                 : chartPeriod === '3m' ? 'Last 3 months'
                 : chartPeriod === '6m' ? 'Last 6 months'
                 : chartPeriod === 'fy' ? `FY${new Date().getMonth() >= 6 ? new Date().getFullYear() + 1 : new Date().getFullYear()}`.replace(/20(\d\d)/, '$1')
@@ -6611,7 +6783,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                     </button>
                     {/* Mark as Sold — active only */}
                     <button title="Mark as sold"
-                      onClick={() => { setEditingDetails(false); setSoldForm({ sold_date: property.sold_date ?? '', sold_price: property.sold_price != null ? String(property.sold_price) : '' }); setSoldError(null); setShowSoldModal(true) }}
+                      onClick={() => { setEditingDetails(false); setSoldForm({ sold_date: property.sold_date ?? '', sold_price: property.sold_price != null ? String(property.sold_price) : '', agent_commission: saleCosts.find(c => c.type === 'agent_commission')?.amount != null ? String(saleCosts.find(c => c.type === 'agent_commission')!.amount) : '', legal_conveyancing: saleCosts.find(c => c.type === 'legal_conveyancing')?.amount != null ? String(saleCosts.find(c => c.type === 'legal_conveyancing')!.amount) : '', advertising: saleCosts.find(c => c.type === 'advertising')?.amount != null ? String(saleCosts.find(c => c.type === 'advertising')!.amount) : '', auction_fees: saleCosts.find(c => c.type === 'auction_fees')?.amount != null ? String(saleCosts.find(c => c.type === 'auction_fees')!.amount) : '' }); setSoldError(null); setShowSoldModal(true) }}
                       style={{ padding: '7px 9px', background: '#f0f2f7', border: 'none', borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#5c6478' }}>
                       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M2 3h9l4 5-4 5H2z"/>
@@ -6630,13 +6802,14 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                 )}
                 {property.status === 'sold' && (
                   <div style={{ display: 'flex', gap: 6 }}>
-                    {/* Archive — kept for sold */}
-                    <button title="Archive property"
-                      onClick={() => { setEditingDetails(false); archiveProperty() }}
-                      style={{ padding: '7px 9px', background: '#f0f2f7', border: 'none', borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', color: '#5c6478' }}>
-                      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="1" y="3" width="14" height="3" rx="1"/><path d="M2 6v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6"/><path d="M6 10h4"/>
+                    {/* Un-sale — revert to active */}
+                    <button title="Revert to active"
+                      onClick={() => { setEditingDetails(false); unsaleProperty() }}
+                      style={{ padding: '7px 10px', background: '#f0f2f7', border: 'none', borderRadius: 7, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#5c6478', display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 4v5h5"/><path d="M1.5 9A7 7 0 1 0 4 4.5"/>
                       </svg>
+                      Un-sale
                     </button>
                   </div>
                 )}
@@ -7107,6 +7280,99 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
         )
       })()}
 
+      {/* ── Sale Costs Modal ────────────────────────────────────── */}
+      {editingSaleCosts && (() => {
+        const s: React.CSSProperties = { width: '100%', padding: '8px 11px', border: '1px solid #e4e7f0', borderRadius: 8, fontSize: 13, color: '#1a1e2e', outline: 'none', boxSizing: 'border-box', background: '#fff' }
+        const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: '#5c6478', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 6 }
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+            onClick={e => { if (e.target === e.currentTarget) setEditingSaleCosts(false) }}>
+            <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,.25)', maxHeight: '90vh', overflowY: 'auto' }}>
+              <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e4e7f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+                <h2 style={{ fontSize: 15, fontWeight: 800, margin: 0 }}>Edit Sale Details</h2>
+                <button onClick={() => setEditingSaleCosts(false)} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9ca3af', cursor: 'pointer', lineHeight: 1, padding: '0 4px' }}>×</button>
+              </div>
+              <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {/* Sale date + price */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={lbl}>Sale date</label>
+                    <input type="date" value={soldForm.sold_date} onChange={e => setSoldForm(x => ({ ...x, sold_date: e.target.value }))} style={s} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Sale price</label>
+                    <input type="number" step="1000" value={soldForm.sold_price} onChange={e => setSoldForm(x => ({ ...x, sold_price: e.target.value }))} style={{ ...s, textAlign: 'right' as const }} placeholder="—" />
+                  </div>
+                </div>
+                <div style={{ borderTop: '1px solid #e4e7f0', paddingTop: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '.07em', marginBottom: 10 }}>Sale costs</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {(['agent_commission', 'legal_conveyancing', 'advertising', 'auction_fees'] as SaleCostType[]).map(type => {
+                  const existing = saleForm.find(r => r.type === type)
+                  return (
+                    <div key={type} style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: 10, alignItems: 'center' }}>
+                      <label style={{ fontSize: 12.5, color: '#5c6478' }}>{SALE_LABELS[type]}</label>
+                      <input type="number" step="100" placeholder="—"
+                        value={existing?.amount ?? ''}
+                        onChange={e => {
+                          const val = e.target.value
+                          setSaleForm(prev => {
+                            const filtered = prev.filter(r => r.type !== type)
+                            return val ? [...filtered, { type, amount: val, description: '' }] : filtered
+                          })
+                        }}
+                        style={{ ...s, textAlign: 'right' }} />
+                    </div>
+                  )
+                })}
+                {saleForm.filter(r => r.type === 'other').map((row, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 140px 28px', gap: 8, alignItems: 'center' }}>
+                    <input value={row.description} placeholder="Description"
+                      onChange={e => setSaleForm(prev => prev.map((r) => r.type === 'other' && saleForm.filter(x => x.type === 'other').indexOf(r) === i ? { ...r, description: e.target.value } : r))}
+                      style={{ ...s, fontSize: 12.5 }} />
+                    <input type="number" step="100" value={row.amount}
+                      onChange={e => setSaleForm(prev => prev.map((r) => r.type === 'other' && saleForm.filter(x => x.type === 'other').indexOf(r) === i ? { ...r, amount: e.target.value } : r))}
+                      style={{ ...s, textAlign: 'right' }} />
+                    <button onClick={() => { const idx = saleForm.filter(x => x.type === 'other').indexOf(row); setSaleForm(prev => prev.filter(r => !(r.type === 'other' && prev.filter(x => x.type === 'other').indexOf(r) === idx))) }}
+                      style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, color: '#c8332a', cursor: 'pointer', fontWeight: 700, fontSize: 14, lineHeight: 1, padding: '4px 6px' }}>×</button>
+                  </div>
+                ))}
+                <button onClick={() => setSaleForm(prev => [...prev, { type: 'other', amount: '', description: '' }])}
+                  style={{ alignSelf: 'flex-start', background: 'none', border: '1px dashed #d1d5db', borderRadius: 7, padding: '5px 12px', fontSize: 12, color: '#5c6478', cursor: 'pointer' }}>
+                  + Add other cost
+                </button>
+                  </div>
+                </div>
+                {saleError && <div style={{ padding: '9px 12px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 12.5, color: '#c8332a' }}>⚠ {saleError}</div>}
+              </div>
+              <div style={{ padding: '0 24px 20px', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button onClick={() => setEditingSaleCosts(false)} style={{ padding: '9px 16px', background: '#f0f2f7', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#5c6478' }}>Cancel</button>
+                <button disabled={saleSaving} onClick={async () => {
+                  setSaleSaving(true); setSaleError(null)
+                  try {
+                    // Save sale date/price
+                    const propRes = await fetch('/api/properties/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ propertyId: property.id, updates: { sold_date: soldForm.sold_date || null, sold_price: soldForm.sold_price ? parseFloat(soldForm.sold_price) : null } }) })
+                    const propData = await propRes.json()
+                    if (propData.error) { setSaleError(propData.error); return }
+                    // Save sale costs
+                    const validCosts = saleForm.filter(r => r.amount && !isNaN(parseFloat(r.amount))).map(r => ({ type: r.type, amount: parseFloat(r.amount), description: r.description || null }))
+                    const res = await fetch('/api/properties/sale-costs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ propertyId: property.id, costs: validCosts }) })
+                    const data = await res.json()
+                    if (data.error) { setSaleError(data.error); return }
+                    setSaleCosts(validCosts.map(c => ({ ...c, id: '', property_id: property.id, date: null, created_at: '' }) as PropertySaleCost))
+                    setEditingSaleCosts(false)
+                    router.refresh()
+                  } catch { setSaleError('Network error') }
+                  finally { setSaleSaving(false) }
+                }} style={{ padding: '9px 18px', background: BLUE, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  {saleSaving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* ── Mortgage Broker Modal ────────────────────────────────── */}
       {editingBroker && (() => {
         const f = brokerForm
@@ -7158,42 +7424,62 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
       })()}
 
       {/* ── Mark as Sold Modal ───────────────────────────────────── */}
-      {showSoldModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-          onClick={e => { if (e.target === e.currentTarget) setShowSoldModal(false) }}>
-          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 440, boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
-            <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e4e7f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h2 style={{ fontSize: 15, fontWeight: 800, margin: 0 }}>Mark as Sold</h2>
-              <button onClick={() => setShowSoldModal(false)} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9ca3af', cursor: 'pointer', lineHeight: 1, padding: '0 4px' }}>×</button>
-            </div>
-            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <p style={{ margin: 0, fontSize: 13, color: '#5c6478', lineHeight: 1.5 }}>
-                All transactions, valuations and loan records are kept — you&apos;ll need them for CGT calculations. This is reversible.
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: '#5c6478', textTransform: 'uppercase' as const, letterSpacing: '.06em', display: 'block', marginBottom: 6 }}>Sale date *</label>
-                  <input type="date" value={soldForm.sold_date} onChange={e => setSoldForm(x => ({ ...x, sold_date: e.target.value }))}
-                    style={{ width: '100%', padding: '8px 11px', border: '1px solid #e4e7f0', borderRadius: 8, fontSize: 13, color: '#1a1e2e', outline: 'none', boxSizing: 'border-box' as const }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: '#5c6478', textTransform: 'uppercase' as const, letterSpacing: '.06em', display: 'block', marginBottom: 6 }}>Sale price</label>
-                  <input type="number" step="1000" value={soldForm.sold_price} onChange={e => setSoldForm(x => ({ ...x, sold_price: e.target.value }))}
-                    style={{ width: '100%', padding: '8px 11px', border: '1px solid #e4e7f0', borderRadius: 8, fontSize: 13, color: '#1a1e2e', outline: 'none', boxSizing: 'border-box' as const }} placeholder="Optional" />
-                </div>
+      {showSoldModal && (() => {
+        const inp: React.CSSProperties = { width: '100%', padding: '8px 11px', border: '1px solid #e4e7f0', borderRadius: 8, fontSize: 13, color: '#1a1e2e', outline: 'none', boxSizing: 'border-box', background: '#fff' }
+        const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: '#5c6478', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 6 }
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+            onClick={e => { if (e.target === e.currentTarget) setShowSoldModal(false) }}>
+            <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,.25)', maxHeight: '90vh', overflowY: 'auto' }}>
+              <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e4e7f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+                <h2 style={{ fontSize: 15, fontWeight: 800, margin: 0 }}>Mark as Sold</h2>
+                <button onClick={() => setShowSoldModal(false)} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9ca3af', cursor: 'pointer', lineHeight: 1, padding: '0 4px' }}>×</button>
               </div>
-              {soldError && <div style={{ padding: '9px 12px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 12.5, color: '#c8332a' }}>⚠ {soldError}</div>}
-            </div>
-            <div style={{ padding: '0 24px 20px', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowSoldModal(false)} style={{ padding: '9px 16px', background: '#f0f2f7', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#5c6478' }}>Cancel</button>
-              <button onClick={markAsSold} disabled={soldSaving}
-                style={{ padding: '9px 18px', background: BLUE, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                {soldSaving ? 'Saving…' : 'Confirm Sale'}
-              </button>
+              <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <p style={{ margin: 0, fontSize: 13, color: '#5c6478', lineHeight: 1.5 }}>
+                  All transactions, valuations and loan records are kept — you&apos;ll need them for CGT calculations. This is reversible.
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={lbl}>Sale date *</label>
+                    <input type="date" value={soldForm.sold_date} onChange={e => setSoldForm(x => ({ ...x, sold_date: e.target.value }))} style={inp} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Sale price</label>
+                    <input type="number" step="1000" value={soldForm.sold_price} onChange={e => setSoldForm(x => ({ ...x, sold_price: e.target.value }))} style={inp} placeholder="Optional" />
+                  </div>
+                </div>
+                <div style={{ borderTop: '1px solid #e4e7f0', paddingTop: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '.07em', marginBottom: 10 }}>Sale costs (optional)</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    {([
+                      ['agent_commission', 'Agent commission'] as const,
+                      ['legal_conveyancing', 'Legal / conveyancing'] as const,
+                      ['advertising', 'Advertising'] as const,
+                      ['auction_fees', 'Auction fees'] as const,
+                    ]).map(([field, label]) => (
+                      <div key={field}>
+                        <label style={lbl}>{label}</label>
+                        <input type="number" step="100" placeholder="—" value={(soldForm as Record<string, string>)[field]}
+                          onChange={e => setSoldForm(x => ({ ...x, [field]: e.target.value }))}
+                          style={{ ...inp, textAlign: 'right' as const }} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {soldError && <div style={{ padding: '9px 12px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 12.5, color: '#c8332a' }}>⚠ {soldError}</div>}
+              </div>
+              <div style={{ padding: '0 24px 20px', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button onClick={() => setShowSoldModal(false)} style={{ padding: '9px 16px', background: '#f0f2f7', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#5c6478' }}>Cancel</button>
+                <button onClick={markAsSold} disabled={soldSaving}
+                  style={{ padding: '9px 18px', background: BLUE, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  {soldSaving ? 'Saving…' : 'Confirm Sale'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ── Delete Property Modal ─────────────────────────────────── */}
       {showDeleteModal && (

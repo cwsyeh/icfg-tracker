@@ -70,9 +70,9 @@ export default function PortfolioView({ properties }: Props) {
         return sum + (v ?? 0)
       }, 0)
       const portfolioDebt = properties.reduce((sum, p) => {
-        return sum + p.activeLoans.reduce((ls, loan) => {
+        return sum + p.loans.reduce((ls, loan) => {
           if (loan.start_date > endDate) return ls
-          if (loan.closed_date && loan.closed_date < endDate) return ls
+          if (loan.closed_date && loan.closed_date <= endDate) return ls
           const bal = calculateLoanBalance({
             originalAmount: loan.original_amount,
             annualRate: loan.interest_rate,

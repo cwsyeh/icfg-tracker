@@ -6,6 +6,7 @@ export type ConstructionStatus = 'pre_construction' | 'in_progress' | 'completed
 export type ProjectType = 'construction' | 'renovation' | 'granny_flat'
 export type ProjectStatus = 'planned' | 'in_progress' | 'completed'
 export type AcquisitionCostType = 'stamp_duty' | 'legal_conveyancing' | 'building_inspection' | 'buyers_agent' | 'qs_report' | 'soil_test_da' | 'loan_establishment' | 'other'
+export type SaleCostType = 'agent_commission' | 'legal_conveyancing' | 'advertising' | 'auction_fees' | 'other'
 export type LoanRepaymentType = 'principal_and_interest' | 'interest_only' | 'interest_in_advance'
 export type LoanRateType = 'variable' | 'fixed'
 export type ValuationType = 'purchase_price' | 'bank_valuation' | 'corelogic_avm' | 'manual'
@@ -181,6 +182,16 @@ export interface PropertyAcquisitionCost {
   id: string
   property_id: string
   type: AcquisitionCostType
+  amount: number
+  description: string | null
+  date: string | null
+  created_at: string
+}
+
+export interface PropertySaleCost {
+  id: string
+  property_id: string
+  type: SaleCostType
   amount: number
   description: string | null
   date: string | null

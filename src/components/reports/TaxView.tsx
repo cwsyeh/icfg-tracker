@@ -72,11 +72,22 @@ export default function TaxView({ property: p, fy }: Props) {
     }).filter(({ interest }) => interest > 0)
 
     const fyYear = fyFullYear(fy)
-    const purchase = p.property.purchase_price ?? 0
+    const landPrice = p.property.purchase_price ?? 0
+    const drawnBuildCost = p.property.property_type === 'house_and_land'
+      ? p.progressPayments
+          .filter(pp => pp.drawn_date !== null)
+          .reduce((s, pp) => {
+            const drawn = (pp.bank_amount !== null || pp.self_amount !== null)
+              ? (pp.bank_amount ?? 0) + (pp.self_amount ?? 0)
+              : (pp.amount ?? 0)
+            return s + drawn
+          }, 0)
+      : 0
+    const purchase = landPrice + drawnBuildCost
     const acquisitionTotal = p.acquisitionCosts.reduce((s, c) => s + c.amount, 0)
     const capitalImprovements = p.allTransactions
       .filter(t => t.type === 'capital_expense' && t.financial_year <= fy)
-      .reduce((s, t) => s + t.amount, 0)
+      .reduce((s, t) => s + Math.abs(t.amount), 0)
     const cumulativeDiv40 = p.depreciation
       .filter(d => fyFullYear(d.financial_year as FyLabel) <= fyYear)
       .reduce((s, d) => s + (d.plant_equipment_amount ?? 0), 0)
@@ -86,7 +97,7 @@ export default function TaxView({ property: p, fy }: Props) {
     const cumulativeDepreciation = cumulativeDiv40 + cumulativeDiv43
     const costBase = purchase + acquisitionTotal + capitalImprovements - cumulativeDepreciation
 
-    return { grossRent, otherIncome, totalIncome, rentTxns, otherIncomeTxns, expenseRows, totalExpenses, netResult, interestByLoan, costBase: { purchase, acquisitionTotal, capitalImprovements, cumulativeDepreciation, cumulativeDiv40, cumulativeDiv43, total: costBase } }
+    return { grossRent, otherIncome, totalIncome, rentTxns, otherIncomeTxns, expenseRows, totalExpenses, netResult, interestByLoan, costBase: { purchase, landPrice, drawnBuildCost, acquisitionTotal, capitalImprovements, cumulativeDepreciation, cumulativeDiv40, cumulativeDiv43, total: costBase } }
   }, [p, fy])
 
   const prop = p.property
@@ -361,7 +372,7 @@ export default function TaxView({ property: p, fy }: Props) {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 1, padding: 1 }}>
             {[
-              { label: 'Purchase Price', value: formatCurrency(costBase.purchase), sub: prop.purchase_date ?? undefined },
+              { label: 'Purchase Price', value: formatCurrency(costBase.purchase), sub: prop.property_type === 'house_and_land' ? `Land: ${formatCurrency(costBase.landPrice)} · Build drawn: ${formatCurrency(costBase.drawnBuildCost)}` : (prop.purchase_date ?? undefined) },
               { label: 'Acquisition Costs', value: formatCurrency(costBase.acquisitionTotal), sub: 'Stamp duty, legal, inspections etc.' },
               { label: 'Capital Improvements', value: formatCurrency(costBase.capitalImprovements), sub: 'Capital expenses to date' },
               { label: `Cumulative Depreciation (to ${fy})`, value: `(${formatCurrency(costBase.cumulativeDepreciation)})`, sub: `Div 40: ${formatCurrency(costBase.cumulativeDiv40)} · Div 43: ${formatCurrency(costBase.cumulativeDiv43)}`, neg: true },

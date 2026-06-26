@@ -49,14 +49,37 @@ export default function PropertyView({ property: p }: Props) {
     const grossYield = val > 0 && grossRent > 0 ? (grossRent / val) * 100 : null
     const netYield = val > 0 && grossRent > 0 ? (netResult / val) * 100 : null
 
-    // 5-year chart data (last 5 FY years with data)
-    const chartFYs = FY_CHART_RANGE.slice(-5)
+    // Determine the 5-year chart window — anchor to sold FY if sold, otherwise latest
+    const soldDate = p.property.sold_date
+    const soldPrice = p.property.sold_price
+    const soldFy = soldDate
+      ? (() => { const [y, m] = soldDate.split('-').map(Number); return `FY${String(m >= 7 ? y + 1 : y).slice(-2)}` })()
+      : null
+    const soldFyIdx = soldFy ? FY_CHART_RANGE.indexOf(soldFy as typeof FY_CHART_RANGE[number]) : -1
+    const anchorIdx = soldFyIdx >= 0 ? soldFyIdx : FY_CHART_RANGE.length - 1
+    const chartFYs = FY_CHART_RANGE.slice(Math.max(0, anchorIdx - 9), anchorIdx + 1)
+
     const chartData = chartFYs.map(fy => {
-      const endDate = fyEndDate(fy)
-      const propVal = valuationAsOf(p.allValuations, endDate, p.property.purchase_date && p.property.purchase_date <= endDate ? (p.property.purchase_price ?? null) : null)
-      const propDebt = p.activeLoans.reduce((ls, loan) => {
+      const isSalePoint = soldDate && soldPrice && fy === soldFy
+      const endDate = isSalePoint ? soldDate : fyEndDate(fy)
+      const propVal = isSalePoint
+        ? soldPrice
+        : (() => {
+            const formalVal = valuationAsOf(p.allValuations, endDate, null)
+            if (formalVal !== null) return formalVal
+            if (!p.property.purchase_date || p.property.purchase_date > endDate) return null
+            const landPrice = p.property.purchase_price ?? 0
+            if (p.property.property_type !== 'house_and_land') return landPrice || null
+            const drawn = p.progressPayments
+              .filter(pp => pp.drawn_date && pp.drawn_date <= endDate)
+              .reduce((s, pp) => s + ((pp.bank_amount !== null || pp.self_amount !== null)
+                ? (pp.bank_amount ?? 0) + (pp.self_amount ?? 0)
+                : (pp.amount ?? 0)), 0)
+            return (landPrice + drawn) || null
+          })()
+      const propDebt = p.loans.reduce((ls, loan) => {
         if (loan.start_date > endDate) return ls
-        if (loan.closed_date && loan.closed_date < endDate) return ls
+        if (loan.closed_date && loan.closed_date <= endDate) return ls
         return ls + calculateLoanBalance({
           originalAmount: loan.original_amount, annualRate: loan.interest_rate, termYears: loan.loan_term_years,
           startDate: loan.start_date, repaymentType: loan.repayment_type,
@@ -85,7 +108,7 @@ export default function PropertyView({ property: p }: Props) {
       }
     }).filter(Boolean) as { fy: string; Value?: number; Equity?: number; Debt?: number; cashNet: number | null; nonCash: number | null; netResult: number | null; grossYield?: number }[]
 
-    return { val, debt, equity, ltv, grossRent, grossYield, netYield, netResult, latestFy, chartData }
+    return { val, debt, equity, ltv, grossRent, grossYield, netYield, netResult, latestFy, chartData, soldFy }
   }, [p])
 
   const prop = p.property
@@ -130,7 +153,7 @@ export default function PropertyView({ property: p }: Props) {
           <div style={CARD}>
             <div style={{ padding: '16px 22px 4px' }}>
               <div style={{ fontSize: 14, fontWeight: 800 }}>Capital Growth</div>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>Property value, debt and equity over 5 years</div>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>{data.soldFy ? `Property value, debt and equity to ${data.soldFy} (sold)` : 'Property value, debt and equity over 10 years'}</div>
             </div>
             <div style={{ padding: '8px 22px 20px' }}>
               <ResponsiveContainer width="100%" height={200}>

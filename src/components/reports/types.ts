@@ -1,4 +1,4 @@
-import type { Property, Loan, Transaction, Valuation, DepreciationSchedule, PropertyAcquisitionCost, LoanSecurity } from '@/lib/types/database'
+import type { Property, Loan, Transaction, Valuation, DepreciationSchedule, PropertyAcquisitionCost, ConstructionProgressPayment } from '@/lib/types/database'
 
 export type FyLabel = 'FY20' | 'FY21' | 'FY22' | 'FY23' | 'FY24' | 'FY25' | 'FY26' | 'FY27'
 
@@ -18,6 +18,8 @@ export interface PropertyReport {
   depreciation: DepreciationSchedule[]
   allValuations: Valuation[]
   acquisitionCosts: PropertyAcquisitionCost[]
+  progressPayments: ConstructionProgressPayment[]
+  loans: Loan[]
 }
 
 export type ReportType = 'portfolio' | 'property' | 'tax'
