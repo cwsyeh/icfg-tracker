@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
   // Verify user owns the property
   const { data: ownership, error: ownerErr } = await adminSupabase
     .from('property_owners')
-    .select('id')
+    .select('id, role')
     .eq('property_id', propertyId)
     .eq('user_id', user.id)
     .single()
@@ -44,6 +44,7 @@ export async function POST(request: NextRequest) {
   if (ownerErr || !ownership) {
     return NextResponse.json({ error: 'Property not found or access denied' }, { status: 404 })
   }
+  if (ownership.role === 'viewer') return NextResponse.json({ error: 'View-only access' }, { status: 403 })
 
   // Delete the transactions
   const { error } = await adminSupabase

@@ -13,11 +13,12 @@ export async function POST(request: NextRequest) {
 
     const { data: ownership } = await supabase
       .from('property_owners')
-      .select('id')
+      .select('id, role')
       .eq('property_id', property_id)
       .eq('user_id', user.id)
       .single()
     if (!ownership) return Response.json({ error: 'Property not found' }, { status: 404 })
+    if (ownership.role === 'viewer') return Response.json({ error: 'View-only access' }, { status: 403 })
 
     const { data, error } = await supabase
       .from('depreciation_schedules')

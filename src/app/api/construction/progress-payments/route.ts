@@ -21,7 +21,7 @@ async function getUser() {
 async function verifyOwnership(propertyId: string, userId: string) {
   const { data } = await adminSupabase
     .from('property_owners')
-    .select('id')
+    .select('id, role')
     .eq('property_id', propertyId)
     .eq('user_id', userId)
     .single()

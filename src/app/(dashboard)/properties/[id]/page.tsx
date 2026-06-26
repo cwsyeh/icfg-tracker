@@ -56,7 +56,9 @@ export default async function PropertyPage({ params }: { params: Promise<{ id: s
 
   if (!property) notFound()
 
-  const latestValuation = (valuations ?? [])[0]?.amount ?? null
+  // OTP: fall back to deposit_paid as current value proxy when no formal valuation exists
+  const latestValuation = (valuations ?? [])[0]?.amount ??
+    (property?.property_type === 'off_the_plan' ? (property?.deposit_paid ?? null) : null)
 
   // Latest valuation per security property (for real LVR calculation)
   const securityPropIds = [...new Set((loanSecurities ?? []).map((ls: LoanSecurity) => ls.property_id))]

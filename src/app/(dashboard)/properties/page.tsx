@@ -58,8 +58,10 @@ export default async function PropertiesPage() {
     const valDate = propValuations[0]?.valuation_date ?? null
 
     // Fall back to purchase cost when no formal valuation exists
-    const purchaseCostFallback = (prop.purchase_price ?? 0) +
-      (prop.property_type === 'house_and_land' ? (prop.construction_contract_amount ?? 0) : 0)
+    // OTP: use deposit_paid as the current value proxy
+    const purchaseCostFallback = prop.property_type === 'off_the_plan'
+      ? (prop.deposit_paid ?? 0)
+      : (prop.purchase_price ?? 0) + (prop.property_type === 'house_and_land' ? (prop.construction_contract_amount ?? 0) : 0)
     const displayVal = latestVal ?? (purchaseCostFallback > 0 ? purchaseCostFallback : null)
     const isValFallback = latestVal === null && displayVal !== null
 

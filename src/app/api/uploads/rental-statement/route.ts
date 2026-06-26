@@ -46,12 +46,13 @@ export async function POST(request: NextRequest) {
   // Verify user owns this property
   const { data: ownership } = await supabase
     .from('property_owners')
-    .select('share_percentage')
+    .select('share_percentage, role')
     .eq('property_id', propertyId)
     .eq('user_id', user.id)
     .single()
 
   if (!ownership) return NextResponse.json({ error: 'Property not found' }, { status: 404 })
+  if (ownership.role === 'viewer') return NextResponse.json({ error: 'View-only access' }, { status: 403 })
 
   // Create upload job record (best-effort audit trail — failure does not block upload)
   const { data: job, error: jobErr } = await supabase.from('upload_jobs').insert({

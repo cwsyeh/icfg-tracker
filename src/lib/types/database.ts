@@ -68,6 +68,7 @@ export interface Property {
   purchase_date: string | null
   settlement_date: string | null
   purchase_price: number | null
+  deposit_paid: number | null
   sold_date: string | null
   sold_price: number | null
   broker_name: string | null

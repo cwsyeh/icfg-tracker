@@ -46,7 +46,7 @@ export default function AddPropertyModal() {
 
   // Step 2 — purchase (established / land)
   const [purchase, setPurchase] = useState({
-    purchase_date: '', settlement_date: '', purchase_price: '', capitalise_interest: false,
+    purchase_date: '', settlement_date: '', purchase_price: '', deposit_paid: '', capitalise_interest: false,
   })
   const [acqRows, setAcqRows] = useState<AcqRow[]>([])
 
@@ -62,7 +62,7 @@ export default function AddPropertyModal() {
     setStep('info')
     setError(null)
     setInfo({ name: '', street_address: '', suburb: '', state: 'QLD', postcode: '', usage: 'investment', mixed_use_percent: '', property_type: 'established' })
-    setPurchase({ purchase_date: '', settlement_date: '', purchase_price: '', capitalise_interest: false })
+    setPurchase({ purchase_date: '', settlement_date: '', purchase_price: '', deposit_paid: '', capitalise_interest: false })
     setAcqRows([])
     setConstruction({ land_purchase_date: '', land_price: '', builder: '', contract_amount: '', start_date: '', capitalise_interest: false })
   }
@@ -121,6 +121,7 @@ export default function AddPropertyModal() {
         body.purchase_price = purchase.purchase_price ? Number(purchase.purchase_price) : null
         if (info.property_type === 'off_the_plan') {
           body.capitalise_construction_interest = purchase.capitalise_interest
+          body.deposit_paid = purchase.deposit_paid ? Number(purchase.deposit_paid) : null
         }
         const validAcq = acqRows.filter(r => r.type && r.amount && Number(r.amount) > 0)
         if (validAcq.length > 0) {
@@ -337,6 +338,14 @@ export default function AddPropertyModal() {
                         value={purchase.purchase_price}
                         onChange={e => setPurchase(p => ({ ...p, purchase_price: e.target.value }))} />
                     </div>
+                    {info.property_type === 'off_the_plan' && (
+                      <div>
+                        <label style={labelStyle}>Deposit paid</label>
+                        <input type="number" style={inputStyle} placeholder="e.g. 134000"
+                          value={purchase.deposit_paid}
+                          onChange={e => setPurchase(p => ({ ...p, deposit_paid: e.target.value }))} />
+                      </div>
+                    )}
                   </div>
 
                   {/* Capitalise interest — OTP only */}

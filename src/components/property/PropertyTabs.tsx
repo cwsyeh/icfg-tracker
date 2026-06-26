@@ -3286,6 +3286,9 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                         <Field label="Contract date" value={property.purchase_date ?? '—'} />
                         <Field label="Settlement date" value={property.settlement_date ?? '—'} />
                         <Field label="Total cost" value={totalCost > 0 ? formatCurrency(totalCost) : '—'} />
+                        {property.property_type === 'off_the_plan' && property.deposit_paid != null && (
+                          <Field label="Deposit paid" value={formatCurrency(property.deposit_paid)} />
+                        )}
                       </div>
                     </>
                   )

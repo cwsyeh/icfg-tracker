@@ -32,7 +32,7 @@ export default function AddPropertyModal({ onClose }: Props) {
 
   const [propertyType, setPropertyType] = useState<PropertyType | null>(null)
   const [basics, setBasics] = useState({ name: '', street_address: '', suburb: '', state: 'QLD', postcode: '', usage: 'investment' as Usage, mixed_use_pct: '', ownership_pct: '100' })
-  const [purchase, setPurchase] = useState({ purchase_date: '', settlement_date: '', purchase_price: '', capitalise_interest: false })
+  const [purchase, setPurchase] = useState({ purchase_date: '', settlement_date: '', purchase_price: '', deposit_paid: '', capitalise_interest: false })
   const [acqForm, setAcqForm] = useState<AcqRow[]>([])
   const [construction, setConstruction] = useState({
     land_value: '',
@@ -102,6 +102,7 @@ export default function AddPropertyModal({ onClose }: Props) {
       purchase_price: purchase.purchase_price ? parseFloat(purchase.purchase_price) : null,
       acquisition_costs: validCosts,
       capitalise_construction_interest: isOTP ? purchase.capitalise_interest : false,
+      deposit_paid: isOTP && purchase.deposit_paid ? parseFloat(purchase.deposit_paid) : null,
     }
 
     if (isHL) {
@@ -330,6 +331,15 @@ export default function AddPropertyModal({ onClose }: Props) {
                   <input type="number" step="1000" value={purchase.purchase_price} onChange={e => setPurchase(x => ({ ...x, purchase_price: e.target.value }))} style={{ ...s, ...(error?.includes('price') ? { borderColor: '#fca5a5' } : {}) }} placeholder="e.g. 750000" />
                 </div>
               </div>
+
+              {isOTP && (
+                <div>
+                  <label style={lbl}>Deposit paid</label>
+                  <input type="number" step="1000" value={purchase.deposit_paid}
+                    onChange={e => setPurchase(x => ({ ...x, deposit_paid: e.target.value }))}
+                    style={s} placeholder="e.g. 134000" />
+                </div>
+              )}
 
               {isOTP && (
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
