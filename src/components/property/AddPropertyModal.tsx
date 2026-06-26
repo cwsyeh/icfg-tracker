@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import AddressAutocomplete from '@/components/ui/AddressAutocomplete'
 
 type Step = 'info' | 'purchase' | 'construction'
 
@@ -235,11 +236,11 @@ export default function AddPropertyModal() {
 
                   <div style={fieldStyle}>
                     <label style={labelStyle}>Street address *</label>
-                    <input
-                      style={inputStyle}
-                      placeholder="123 Example Street"
+                    <AddressAutocomplete
                       value={info.street_address}
-                      onChange={e => setInfo(p => ({ ...p, street_address: e.target.value }))}
+                      onChange={v => setInfo(p => ({ ...p, street_address: v }))}
+                      onSelect={s => setInfo(p => ({ ...p, street_address: s.street_address, suburb: s.suburb, state: s.state, postcode: s.postcode }))}
+                      inputStyle={inputStyle}
                     />
                   </div>
 
