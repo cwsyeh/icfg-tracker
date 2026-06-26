@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { calculateLoanBalance, formatCurrency } from '@/lib/utils/finance'
 
 import type { Property, Loan, Valuation } from '@/lib/types/database'
-import AddPropertyModal from '@/components/property/AddPropertyModal'
+import AddPropertyButton from '@/components/portfolio/AddPropertyButton'
 import { ClickableRow } from '@/components/ui/ClickableRow'
 
 const USAGE_LABEL: Record<string, string> = {
@@ -17,6 +17,7 @@ const TYPE_LABEL: Record<string, string> = {
   established: 'Established',
   house_and_land: 'House & Land',
   land: 'Vacant Land',
+  off_the_plan: 'Off The Plan',
 }
 
 export default async function PropertiesPage() {
@@ -114,7 +115,7 @@ export default async function PropertiesPage() {
             {active.length} active · {inactive.length > 0 ? `${inactive.length} archived / sold` : 'none archived'}
           </p>
         </div>
-        <AddPropertyModal />
+        <AddPropertyButton />
       </div>
 
       {/* ── Active properties ── */}
