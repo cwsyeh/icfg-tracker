@@ -2,6 +2,31 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 
+interface NominatimResult {
+  address?: {
+    house_number?: string; road?: string; pedestrian?: string; path?: string
+    suburb?: string; city_district?: string; town?: string; village?: string; city?: string
+    state?: string; postcode?: string
+  }
+}
+
+function extractUnit(q: string): { unitPrefix: string; streetQuery: string } {
+  const wordMatch = q.match(/^(Unit|Apt|Apartment|Level|Shop|Suite|Lot)\s+\S+[,\s]+(.+)/i)
+  if (wordMatch) return { unitPrefix: wordMatch[1] + ' ' + q.slice(wordMatch[1].length).trim().split(/[,\s]+/)[0], streetQuery: wordMatch[2].trim() }
+  const slashMatch = q.match(/^(\d+)\/(.+)/)
+  if (slashMatch) return { unitPrefix: `Unit ${slashMatch[1]}`, streetQuery: slashMatch[2].trim() }
+  return { unitPrefix: '', streetQuery: q }
+}
+
+function normaliseState(raw: string): string {
+  const map: Record<string, string> = {
+    'queensland': 'QLD', 'new south wales': 'NSW', 'victoria': 'VIC',
+    'south australia': 'SA', 'western australia': 'WA', 'tasmania': 'TAS',
+    'northern territory': 'NT', 'australian capital territory': 'ACT',
+  }
+  return map[raw.toLowerCase()] ?? raw.toUpperCase().slice(0, 3)
+}
+
 interface Suggestion {
   label: string
   street_address: string
@@ -29,11 +54,37 @@ export default function AddressAutocomplete({ value, onChange, onSelect, placeho
   const fetchSuggestions = useCallback((q: string) => {
     if (q.length < 3) { setSuggestions([]); setOpen(false); return }
     setLoading(true)
-    fetch(`/api/address/autocomplete?q=${encodeURIComponent(q)}`)
+
+    const { unitPrefix, streetQuery } = extractUnit(q)
+    const url = new URL('https://nominatim.openstreetmap.org/search')
+    url.searchParams.set('q', streetQuery)
+    url.searchParams.set('countrycodes', 'au')
+    url.searchParams.set('format', 'json')
+    url.searchParams.set('addressdetails', '1')
+    url.searchParams.set('limit', '6')
+
+    fetch(url.toString(), { headers: { 'Accept-Language': 'en-AU' }, signal: AbortSignal.timeout(5000) })
       .then(r => r.json())
-      .then(d => {
-        setSuggestions(d.suggestions ?? [])
-        setOpen((d.suggestions ?? []).length > 0)
+      .then((data: NominatimResult[]) => {
+        const suggestions = data
+          .filter(r => r.address?.postcode && r.address?.state)
+          .map(r => {
+            const addr = r.address!
+            const streetNum = addr.house_number ?? ''
+            const road = addr.road ?? addr.pedestrian ?? addr.path ?? ''
+            const baseStreet = [streetNum, road].filter(Boolean).join(' ')
+            const suburb = addr.suburb ?? addr.city_district ?? addr.town ?? addr.village ?? addr.city ?? ''
+            const state = normaliseState(addr.state ?? '')
+            const postcode = addr.postcode ?? ''
+            if (!baseStreet || !suburb || !state || !postcode) return null
+            const street_address = unitPrefix ? `${unitPrefix}, ${baseStreet}` : baseStreet
+            const label = `${street_address}, ${suburb} ${state} ${postcode}`
+            return { label, street_address, suburb, state, postcode }
+          })
+          .filter((s): s is NonNullable<typeof s> => s !== null)
+          .filter((s, i, arr) => arr.findIndex(x => x.street_address === s.street_address && x.suburb === s.suburb) === i)
+        setSuggestions(suggestions)
+        setOpen(suggestions.length > 0)
       })
       .catch(() => setSuggestions([]))
       .finally(() => setLoading(false))

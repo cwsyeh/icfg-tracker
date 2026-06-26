@@ -16,10 +16,13 @@ export async function GET(request: NextRequest) {
 
     const res = await fetch(url.toString(), {
       headers: { 'User-Agent': 'ICFG-Property-Tracker/1.0 (contact@icfg.com.au)' },
-      next: { revalidate: 60 },
+      signal: AbortSignal.timeout(5000),
     })
 
-    if (!res.ok) return NextResponse.json({ suggestions: [] })
+    if (!res.ok) {
+      console.error('Nominatim error:', res.status, await res.text().catch(() => ''))
+      return NextResponse.json({ suggestions: [] })
+    }
 
     const data = await res.json()
 
@@ -47,7 +50,8 @@ export async function GET(request: NextRequest) {
       .filter((s, i, arr) => arr.findIndex(x => x.street_address === s.street_address && x.suburb === s.suburb) === i)
 
     return NextResponse.json({ suggestions })
-  } catch {
+  } catch (err) {
+    console.error('Address autocomplete error:', err)
     return NextResponse.json({ suggestions: [] })
   }
 }

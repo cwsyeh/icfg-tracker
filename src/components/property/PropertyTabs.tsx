@@ -3507,8 +3507,8 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                 <tbody>
                   {recentTx.map(tx => (
                     <tr key={tx.id}>
-                      <td style={{ padding: '9px 10px', borderBottom: '1px solid #f5f7fa', color: '#5c6478', fontSize: 12 }}>{tx.transaction_date}</td>
-                      <td style={{ padding: '9px 10px', borderBottom: '1px solid #f5f7fa', whiteSpace: 'nowrap' }}>{TX_SHORT_LABELS[tx.type] ?? tx.type.replace(/_/g, ' ')}</td>
+                      <td style={{ padding: '9px 10px', borderBottom: '1px solid #f5f7fa', color: '#5c6478', fontSize: 12, whiteSpace: 'nowrap', width: 90 }}>{tx.transaction_date}</td>
+                      <td style={{ padding: '9px 10px', borderBottom: '1px solid #f5f7fa', whiteSpace: 'nowrap', width: 140 }}>{TX_SHORT_LABELS[tx.type] ?? tx.type.replace(/_/g, ' ')}</td>
                       <td style={{ padding: '9px 10px', borderBottom: '1px solid #f5f7fa', color: '#5c6478', fontSize: 12 }}>{tx.description ?? '—'}</td>
                       <td style={{ padding: '9px 10px', borderBottom: '1px solid #f5f7fa', textAlign: 'right', fontWeight: tx.type === 'principal_payment' ? 400 : 600, fontVariantNumeric: 'tabular-nums', color: tx.type === 'principal_payment' ? '#9ca3af' : tx.amount < 0 ? '#c8332a' : '#15803d' }}>
                         {tx.amount < 0 ? `(${formatCurrency(Math.abs(tx.amount))})` : formatCurrency(tx.amount)}
