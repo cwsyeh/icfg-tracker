@@ -378,13 +378,13 @@ export default function AddPropertyModal() {
               {step === 'construction' && (
                 <>
                   <div style={{ background: '#f8fafc', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
-                    <div style={{ fontSize: 11.5, fontWeight: 700, color: '#374151', marginBottom: 2 }}>Land settlement</div>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: '#374151', marginBottom: 2 }}>Land</div>
                     <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 10 }}>
                       The land component of your House & Land package
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                       <div>
-                        <label style={labelStyle}>Settlement date</label>
+                        <label style={labelStyle}>Land contract date</label>
                         <input type="date" style={inputStyle} value={construction.land_purchase_date}
                           onChange={e => setConstruction(p => ({ ...p, land_purchase_date: e.target.value }))} />
                       </div>

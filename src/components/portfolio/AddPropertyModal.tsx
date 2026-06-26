@@ -75,7 +75,7 @@ export default function AddPropertyModal({ onClose }: Props) {
   }
 
   function nextFromPurchase() {
-    if (!purchase.purchase_date) { setError(`${isHL ? 'Land settlement date' : 'Purchase date'} is required`); return }
+    if (!purchase.purchase_date) { setError(`${isHL ? 'Land contract date' : 'Purchase date'} is required`); return }
     if (!purchase.purchase_price) { setError(`${isHL ? 'Land purchase price' : 'Purchase price'} is required`); return }
     setError(null)
     setStep('confirm')
@@ -267,7 +267,7 @@ export default function AddPropertyModal({ onClose }: Props) {
                   <input type="number" step="1000" value={construction.land_value} onChange={e => setConstruction(x => ({ ...x, land_value: e.target.value }))} style={s} placeholder="e.g. 350000" />
                 </div>
                 <div>
-                  <label style={lbl}>Land settlement date</label>
+                  <label style={lbl}>Land contract date</label>
                   <input type="date" value={construction.land_settlement_date} onChange={e => setConstruction(x => ({ ...x, land_settlement_date: e.target.value }))} style={s} />
                 </div>
               </div>
@@ -312,7 +312,7 @@ export default function AddPropertyModal({ onClose }: Props) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
-                  <label style={lbl}>{isHL ? 'Land settlement date' : 'Contract date'} <span style={{ color: '#c8332a' }}>*</span></label>
+                  <label style={lbl}>{isHL ? 'Land contract date' : 'Contract date'} <span style={{ color: '#c8332a' }}>*</span></label>
                   <input type="date" value={purchase.purchase_date} onChange={e => setPurchase(x => ({ ...x, purchase_date: e.target.value }))} style={{ ...s, ...(error?.includes('date') ? { borderColor: '#fca5a5' } : {}) }} />
                 </div>
                 {!isHL && (

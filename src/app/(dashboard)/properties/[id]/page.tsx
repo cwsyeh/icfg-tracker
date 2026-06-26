@@ -92,7 +92,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ id: s
     }
   })
 
-  const totalLoanBalance = enrichedLoans.reduce((s, l) => s + l.current_balance, 0)
+  const totalLoanBalance = enrichedLoans.filter(l => l.status !== 'closed').reduce((s, l) => s + l.current_balance, 0)
   const equity = latestValuation !== null ? latestValuation - totalLoanBalance : null
   const ltv = latestValuation ? Math.round((totalLoanBalance / latestValuation) * 100) : null
 

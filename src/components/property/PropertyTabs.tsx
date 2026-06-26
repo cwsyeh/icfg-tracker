@@ -1334,6 +1334,11 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
   const [addLoanError, setAddLoanError] = useState<string | null>(null)
   // Closed loans toggle
   const [showClosedLoans, setShowClosedLoans] = useState(false)
+  // Payout loan
+  const [payoutLoanId, setPayoutLoanId] = useState<string | null>(null)
+  const [payoutDate, setPayoutDate] = useState('')
+  const [payoutSaving, setPayoutSaving] = useState(false)
+  const [payoutError, setPayoutError] = useState<string | null>(null)
   // Delete loan
   const [deleteLoanId, setDeleteLoanId] = useState<string | null>(null)
   const [deleteLoanSaving, setDeleteLoanSaving] = useState(false)
@@ -1887,6 +1892,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
       io_expiry_date: loan.io_expiry_date ?? '',
       start_date: loan.start_date ?? '',
       fixed_rate_expiry: loan.fixed_rate_expiry ?? '',
+      purpose: loan.purpose ?? '',
       notes: loan.notes ?? '',
     })
     setLoanSecurityForm({
@@ -1936,6 +1942,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
       io_expiry_date: loanForm.io_expiry_date || null,
       start_date: loanForm.start_date || null,
       fixed_rate_expiry: loanForm.fixed_rate_expiry || null,
+      purpose: loanForm.purpose || null,
       notes: loanForm.notes || null,
     }
     if (loanSecurityForm.outsideEnabled && !loanSecurityForm.outsideValue) {
@@ -2304,6 +2311,23 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
       else setReinstateLoanError(data.error ?? 'Reinstate failed')
     } catch { setReinstateLoanError('Network error') }
     finally { setReinstateLoanSaving(false) }
+  }
+
+  async function handlePayoutLoan(loanId: string) {
+    if (!payoutDate) return
+    setPayoutSaving(true)
+    setPayoutError(null)
+    try {
+      const res = await fetch('/api/loans/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ loanId, propertyId: property.id, updates: { status: 'closed', closed_date: payoutDate } }),
+      })
+      const data = await res.json()
+      if (data.success) { setPayoutLoanId(null); setPayoutDate(''); router.refresh() }
+      else setPayoutError(data.error ?? 'Payout failed')
+    } catch { setPayoutError('Network error') }
+    finally { setPayoutSaving(false) }
   }
 
   async function deleteLoan(loanId: string) {
@@ -3623,6 +3647,10 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                                     style={{ display: 'block', width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 12.5, cursor: 'pointer', color: '#1e2942' }}>
                                     {isManualUpdating ? 'Cancel update' : 'Update balance/rate'}
                                   </button>
+                                  <button onClick={() => { setOpenKebabId(null); setPayoutLoanId(loan.id); setPayoutDate(new Date().toISOString().slice(0,10)); setPayoutError(null) }}
+                                    style={{ display: 'block', width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 12.5, cursor: 'pointer', color: '#15803d' }}>
+                                    Mark as paid out
+                                  </button>
                                   <button onClick={() => { setOpenKebabId(null); setDeleteLoanId(loan.id); setDeleteLoanError(null) }}
                                     style={{ display: 'block', width: '100%', padding: '9px 14px', background: 'none', border: 'none', textAlign: 'left', fontSize: 12.5, cursor: 'pointer', color: '#c8332a' }}>
                                     Delete loan
@@ -3795,6 +3823,31 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                           </>
                         )
                       })()}
+
+                      {/* Payout confirmation strip */}
+                      {payoutLoanId === loan.id && (
+                        <div style={{ padding: '12px 16px', background: '#f0fdf4', borderTop: '1px solid #86efac' }}>
+                          <div style={{ fontSize: 12.5, color: '#166534', fontWeight: 600, marginBottom: 8 }}>
+                            Mark {loan.lender}{loan.account_suffix ? ` · ${loan.account_suffix}` : ''} as paid out
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            <label style={{ fontSize: 12, color: '#166534', whiteSpace: 'nowrap' }}>Payout date</label>
+                            <input type="date" value={payoutDate} onChange={e => setPayoutDate(e.target.value)}
+                              style={{ padding: '5px 9px', border: '1px solid #86efac', borderRadius: 7, fontSize: 12, color: '#1a1e2e', outline: 'none' }} />
+                          </div>
+                          {payoutError && <div style={{ fontSize: 12, color: '#c8332a', marginBottom: 6 }}>⚠ {payoutError}</div>}
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button onClick={() => { setPayoutLoanId(null); setPayoutError(null) }}
+                              style={{ padding: '6px 14px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', color: '#5c6478' }}>
+                              Cancel
+                            </button>
+                            <button onClick={() => handlePayoutLoan(loan.id)} disabled={payoutSaving || !payoutDate}
+                              style={{ padding: '6px 14px', background: '#15803d', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer', color: '#fff', opacity: !payoutDate ? 0.5 : 1 }}>
+                              {payoutSaving ? 'Saving…' : 'Confirm payout'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Delete confirmation strip */}
                       {deleteLoanId === loan.id && (
@@ -5723,6 +5776,18 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
               )}
 
               </fieldset>
+
+              {/* Purpose */}
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#5c6478', marginBottom: 4 }}>Purpose</label>
+                <select value={loanForm.purpose} onChange={e => setLoanForm(f => ({ ...f, purpose: e.target.value }))}
+                  style={{ width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 7, fontSize: 13, outline: 'none', background: '#fff' }}>
+                  <option value="">Not set</option>
+                  <option value="investment">Investment</option>
+                  <option value="owner_occupied">Owner-occupied</option>
+                  <option value="mixed">Mixed</option>
+                </select>
+              </div>
 
               {/* Notes — always editable */}
               <div style={{ marginBottom: 14 }}>
