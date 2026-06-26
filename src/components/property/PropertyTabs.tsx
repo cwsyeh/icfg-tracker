@@ -3604,18 +3604,19 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                 </div>
               ) : (
                 loans.filter(l => l.status !== 'closed').map(loan => {
-                  const ioExpiring = loan.io_expiry_date && new Date(loan.io_expiry_date) < new Date(Date.now() + 6 * 30 * 24 * 60 * 60 * 1000)
+                  const ioExpired = loan.io_expiry_date && new Date(loan.io_expiry_date) < new Date()
+                  const ioExpiring = !ioExpired && loan.io_expiry_date && new Date(loan.io_expiry_date) < new Date(Date.now() + 6 * 30 * 24 * 60 * 60 * 1000)
                   const hasActual = loan.actual_balance !== null && loan.actual_balance !== undefined
                   const isManualUpdating = updatingLoanId === loan.id
                   return (
-                    <div key={loan.id} style={{ background: '#fff', border: `1px solid ${ioExpiring ? '#fde68a' : '#e4e7f0'}`, borderRadius: 12, marginBottom: 10, overflow: 'hidden' }}>
+                    <div key={loan.id} style={{ background: '#fff', border: `1px solid ${ioExpired ? '#fca5a5' : ioExpiring ? '#fde68a' : '#e4e7f0'}`, borderRadius: 12, marginBottom: 10, overflow: 'hidden' }}>
                       {/* Card header */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: ioExpiring ? '#fffbeb' : '#f9fafb', borderBottom: '1px solid #e4e7f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: ioExpired ? '#fef2f2' : ioExpiring ? '#fffbeb' : '#f9fafb', borderBottom: '1px solid #e4e7f0' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontSize: 13, fontWeight: 700 }}>{loan.lender}{loan.account_suffix ? ` · ${loan.account_suffix}` : ''}</span>
                           {(loan.repayment_type === 'interest_only' || loan.repayment_type === 'interest_in_advance') && (
-                            <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, background: ioExpiring ? '#fef3c7' : '#eff6ff', color: ioExpiring ? '#92400e' : BLUE }}>
-                              {ioExpiring ? '⚠ IO expiring' : loan.repayment_type === 'interest_in_advance' ? 'Interest in Advance' : 'Interest Only'}
+                            <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, background: ioExpired ? '#fee2e2' : ioExpiring ? '#fef3c7' : '#eff6ff', color: ioExpired ? '#b91c1c' : ioExpiring ? '#92400e' : BLUE }}>
+                              {ioExpired ? '⚠ IO expired' : ioExpiring ? '⚠ IO expiring' : loan.repayment_type === 'interest_in_advance' ? 'Interest in Advance' : 'Interest Only'}
                             </span>
                           )}
                         </div>
