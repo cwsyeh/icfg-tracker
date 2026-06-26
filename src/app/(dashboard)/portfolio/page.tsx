@@ -1,8 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { calculateLoanBalance, formatCurrency, getIOExpiryDate } from '@/lib/utils/finance'
 import type { Property, Loan, Valuation } from '@/lib/types/database'
+
+const adminSupabase = createServiceClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 import AddPropertyButton from '@/components/portfolio/AddPropertyButton'
 import { HoverableRow } from '@/components/ui/ClickableRow'
 
@@ -23,11 +29,20 @@ export default async function PortfolioPage() {
   const { data: profile } = await supabase
     .from('users').select('*').eq('id', user.id).single()
 
-  // Fetch properties with ownership
-  const { data: ownerships } = await supabase
+  // Fetch properties with ownership — seed demo data if first login
+  let { data: ownerships } = await supabase
     .from('property_owners')
     .select('share_percentage, properties(*)')
     .eq('user_id', user.id)
+
+  if (!ownerships || ownerships.length === 0) {
+    await adminSupabase.rpc('seed_demo_data', { target_user_id: user.id })
+    const { data: fresh } = await supabase
+      .from('property_owners')
+      .select('share_percentage, properties(*)')
+      .eq('user_id', user.id)
+    ownerships = fresh
+  }
 
   const propertyIds = (ownerships ?? []).map(o => (o.properties as unknown as Property).id)
 
