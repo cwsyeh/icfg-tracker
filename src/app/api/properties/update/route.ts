@@ -10,7 +10,7 @@ const adminSupabase = createServiceClient(
 
 const ALLOWED = [
   'name', 'street_address', 'suburb', 'state', 'postcode', 'usage', 'mixed_use_investment_percent', 'notes',
-  'status', 'purchase_date', 'purchase_price', 'sold_date', 'sold_price',
+  'status', 'purchase_date', 'settlement_date', 'purchase_price', 'sold_date', 'sold_price',
   'broker_name', 'broker_phone', 'broker_email', 'broker_company', 'broker_license',
   'pm_agency', 'pm_name', 'pm_phone', 'pm_email', 'pm_fee_percent', 'lease_expiry_date',
   'insurance_provider', 'insurance_policy_number', 'insurance_expiry', 'insurance_premium',

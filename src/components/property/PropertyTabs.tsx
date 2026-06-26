@@ -3282,8 +3282,8 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                     <>
                       <div style={{ ...sHead, marginTop: 4 }}>Purchase</div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 14 }}>
-                        <Field label={isHnLComplete ? 'Land settlement' : 'Contract date'} value={property.purchase_date ?? '—'} />
-                        <Field label={isHnLComplete ? 'Completion date' : 'Settlement date'} value={property.settlement_date ?? '—'} />
+                        <Field label="Contract date" value={property.purchase_date ?? '—'} />
+                        <Field label="Settlement date" value={property.settlement_date ?? '—'} />
                         <Field label="Total cost" value={totalCost > 0 ? formatCurrency(totalCost) : '—'} />
                       </div>
                     </>
