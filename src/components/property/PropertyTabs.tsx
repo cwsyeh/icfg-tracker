@@ -3272,6 +3272,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                   <Field label="Postcode" value={property.postcode} />
                   <Field label="Usage" value={property.usage === 'investment' ? 'Investment' : property.usage === 'ppor' ? 'PPOR' : 'Mixed'} />
                   <Field label="Your share" value={`${sharePercentage}%`} />
+                  {property.property_type === 'off_the_plan' && <Field label="Type" value="Off The Plan" />}
                 </div>
                 {!(property.property_type === 'house_and_land' && property.construction_status !== 'completed') && (() => {
                   const isHnLComplete = property.property_type === 'house_and_land' && property.construction_status === 'completed'

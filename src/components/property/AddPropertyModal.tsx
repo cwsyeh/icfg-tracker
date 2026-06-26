@@ -45,7 +45,7 @@ export default function AddPropertyModal() {
 
   // Step 2 — purchase (established / land)
   const [purchase, setPurchase] = useState({
-    purchase_date: '', settlement_date: '', purchase_price: '',
+    purchase_date: '', settlement_date: '', purchase_price: '', capitalise_interest: false,
   })
   const [acqRows, setAcqRows] = useState<AcqRow[]>([])
 
@@ -61,7 +61,7 @@ export default function AddPropertyModal() {
     setStep('info')
     setError(null)
     setInfo({ name: '', street_address: '', suburb: '', state: 'QLD', postcode: '', usage: 'investment', mixed_use_percent: '', property_type: 'established' })
-    setPurchase({ purchase_date: '', settlement_date: '', purchase_price: '' })
+    setPurchase({ purchase_date: '', settlement_date: '', purchase_price: '', capitalise_interest: false })
     setAcqRows([])
     setConstruction({ land_purchase_date: '', land_price: '', builder: '', contract_amount: '', start_date: '', capitalise_interest: false })
   }
@@ -118,6 +118,9 @@ export default function AddPropertyModal() {
         body.purchase_date = purchase.purchase_date || null
         body.settlement_date = purchase.settlement_date || null
         body.purchase_price = purchase.purchase_price ? Number(purchase.purchase_price) : null
+        if (info.property_type === 'off_the_plan') {
+          body.capitalise_construction_interest = purchase.capitalise_interest
+        }
         const validAcq = acqRows.filter(r => r.type && r.amount && Number(r.amount) > 0)
         if (validAcq.length > 0) {
           body.acquisition_costs = validAcq.map(r => ({
@@ -276,6 +279,7 @@ export default function AddPropertyModal() {
                       <select style={inputStyle} value={info.property_type}
                         onChange={e => setInfo(p => ({ ...p, property_type: e.target.value }))}>
                         <option value="established">Established</option>
+                        <option value="off_the_plan">Off The Plan</option>
                         <option value="house_and_land">House & Land</option>
                         <option value="land">Vacant Land</option>
                       </select>
@@ -299,13 +303,14 @@ export default function AddPropertyModal() {
 
                   {info.property_type === 'house_and_land' && (
                     <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 9, padding: '11px 14px', marginTop: 4 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: '#1d4ed8', marginBottom: 3 }}>
-                        House & Land package selected
-                      </div>
-                      <div style={{ fontSize: 11.5, color: '#3b82f6' }}>
-                        Next step will capture land settlement and construction details.
-                        The property will be set to <strong>pre-construction</strong> status.
-                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#1d4ed8', marginBottom: 3 }}>House & Land package selected</div>
+                      <div style={{ fontSize: 11.5, color: '#3b82f6' }}>Next step will capture land settlement and construction details. The property will be set to <strong>pre-construction</strong> status.</div>
+                    </div>
+                  )}
+                  {info.property_type === 'off_the_plan' && (
+                    <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 9, padding: '11px 14px', marginTop: 4 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#166534', marginBottom: 3 }}>Off The Plan selected</div>
+                      <div style={{ fontSize: 11.5, color: '#15803d' }}>Next step captures the contract price and date. Settlement date is optional — add it later once confirmed. You can track and capitalise holding costs during construction.</div>
                     </div>
                   )}
                 </>
@@ -332,6 +337,19 @@ export default function AddPropertyModal() {
                         onChange={e => setPurchase(p => ({ ...p, purchase_price: e.target.value }))} />
                     </div>
                   </div>
+
+                  {/* Capitalise interest — OTP only */}
+                  {info.property_type === 'off_the_plan' && (
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={purchase.capitalise_interest as unknown as boolean}
+                        onChange={e => setPurchase(p => ({ ...p, capitalise_interest: e.target.checked }))}
+                        style={{ width: 15, height: 15, marginTop: 2, accentColor: '#1d4ed8', flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1e2e' }}>Capitalise construction interest</div>
+                        <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 2 }}>Interest during construction is added to cost base instead of expensed</div>
+                      </div>
+                    </label>
+                  )}
 
                   {/* Acquisition costs — optional */}
                   <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16, marginBottom: 8 }}>

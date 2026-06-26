@@ -1,7 +1,7 @@
 export type UserRole = 'client' | 'broker' | 'admin'
 export type PropertyStatus = 'active' | 'sold' | 'archived'
 export type PropertyUsage = 'investment' | 'ppor' | 'mixed'
-export type PropertyType = 'established' | 'house_and_land' | 'land'
+export type PropertyType = 'established' | 'house_and_land' | 'land' | 'off_the_plan'
 export type ConstructionStatus = 'pre_construction' | 'in_progress' | 'completed'
 export type ProjectType = 'construction' | 'renovation' | 'granny_flat'
 export type ProjectStatus = 'planned' | 'in_progress' | 'completed'

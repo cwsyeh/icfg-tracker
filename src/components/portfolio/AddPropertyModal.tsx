@@ -21,7 +21,7 @@ interface AcqRow { type: AcqType; amount: string; description: string }
 
 interface Props { onClose: () => void }
 
-type PropertyType = 'established' | 'house_and_land' | 'land'
+type PropertyType = 'established' | 'house_and_land' | 'land' | 'off_the_plan'
 type Usage = 'investment' | 'ppor' | 'mixed'
 
 export default function AddPropertyModal({ onClose }: Props) {
@@ -32,7 +32,7 @@ export default function AddPropertyModal({ onClose }: Props) {
 
   const [propertyType, setPropertyType] = useState<PropertyType | null>(null)
   const [basics, setBasics] = useState({ name: '', street_address: '', suburb: '', state: 'QLD', postcode: '', usage: 'investment' as Usage, mixed_use_pct: '', ownership_pct: '100' })
-  const [purchase, setPurchase] = useState({ purchase_date: '', settlement_date: '', purchase_price: '' })
+  const [purchase, setPurchase] = useState({ purchase_date: '', settlement_date: '', purchase_price: '', capitalise_interest: false })
   const [acqForm, setAcqForm] = useState<AcqRow[]>([])
   const [construction, setConstruction] = useState({
     land_value: '',
@@ -51,6 +51,7 @@ export default function AddPropertyModal({ onClose }: Props) {
   const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: '#5c6478', textTransform: 'uppercase', letterSpacing: '.06em', display: 'block', marginBottom: 6 }
 
   const isHL = propertyType === 'house_and_land'
+  const isOTP = propertyType === 'off_the_plan'
 
   function nextFromType() {
     if (!propertyType) { setError('Please select a property type'); return }
@@ -66,6 +67,7 @@ export default function AddPropertyModal({ onClose }: Props) {
     if (isNaN(pct) || pct <= 0 || pct > 100) { setError('Ownership must be between 1 and 100%'); return }
     setError(null)
     setStep(isHL ? 'construction' : 'purchase')
+
   }
 
   function nextFromConstruction() {
@@ -99,6 +101,7 @@ export default function AddPropertyModal({ onClose }: Props) {
       settlement_date: purchase.settlement_date || null,
       purchase_price: purchase.purchase_price ? parseFloat(purchase.purchase_price) : null,
       acquisition_costs: validCosts,
+      capitalise_construction_interest: isOTP ? purchase.capitalise_interest : false,
     }
 
     if (isHL) {
@@ -170,6 +173,7 @@ export default function AddPropertyModal({ onClose }: Props) {
               <p style={{ margin: '0 0 4px', fontSize: 13, color: '#5c6478' }}>What type of property are you adding?</p>
               {([
                 { type: 'established' as PropertyType, label: 'Established', desc: 'An existing house, unit, or townhouse', icon: '🏠' },
+                { type: 'off_the_plan' as PropertyType, label: 'Off The Plan', desc: 'Unit or apartment purchased before completion — settlement TBD', icon: '🏢' },
                 { type: 'house_and_land' as PropertyType, label: 'House & Land', desc: 'Land with a build contract — track construction stages', icon: '🏗️' },
                 { type: 'land' as PropertyType, label: 'Vacant Land', desc: 'Land only — no build contract yet', icon: '🌳' },
               ] as const).map(opt => (
@@ -327,6 +331,18 @@ export default function AddPropertyModal({ onClose }: Props) {
                 </div>
               </div>
 
+              {isOTP && (
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={purchase.capitalise_interest as unknown as boolean}
+                    onChange={e => setPurchase(x => ({ ...x, capitalise_interest: e.target.checked }))}
+                    style={{ width: 15, height: 15, marginTop: 2, accentColor: '#1d4ed8', flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1e2e' }}>Capitalise construction interest</div>
+                    <div style={{ fontSize: 11.5, color: '#6b7280', marginTop: 2 }}>Interest during construction is added to cost base instead of expensed</div>
+                  </div>
+                </label>
+              )}
+
               <div style={{ borderTop: '1px solid #f0f2f7', paddingTop: 14 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: '#5c6478', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 12 }}>Acquisition Costs</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -378,7 +394,7 @@ export default function AddPropertyModal({ onClose }: Props) {
                 {[
                   { label: 'Name', value: basics.name },
                   { label: 'Address', value: `${basics.street_address}, ${basics.suburb} ${basics.state} ${basics.postcode}` },
-                  { label: 'Type', value: { established: 'Established', house_and_land: 'House & Land', land: 'Vacant Land' }[propertyType!] },
+                  { label: 'Type', value: { established: 'Established', house_and_land: 'House & Land', land: 'Vacant Land', off_the_plan: 'Off The Plan' }[propertyType!] },
                   { label: 'Usage', value: { investment: 'Investment', ppor: 'Primary residence', mixed: `Mixed (${basics.mixed_use_pct}% investment)` }[basics.usage] },
                   { label: 'Your ownership', value: `${basics.ownership_pct}%` },
                   ...(purchase.purchase_price ? [{ label: isHL ? 'Land price' : 'Purchase price', value: `$${Number(purchase.purchase_price).toLocaleString()}` }] : []),
