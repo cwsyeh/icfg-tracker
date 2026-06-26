@@ -109,8 +109,9 @@ Rules:
 - Interest charged → "interest_expense", negative
 - Principal repayments (P&I or extra) → "principal_payment", negative
 - Fees and charges → "bank_fees", negative
-- Redraw withdrawals → "other_expense", positive (redraw increases balance), use "other_income" type
+- Redraw withdrawals → "other_income", positive
 - Offset credits or interest rebates → "other_income", positive
+- SKIP and do NOT include: loan drawdowns, progress payments, initial advance, "Money we lent you", "Loan proceeds", "Loan drawn", "Loan drawing", or any transaction that increases the loan balance by advancing new funds — these are balance sheet movements, not income or expenses
 - Do NOT include the opening or closing balance as a transaction
 - Use the loan account balance (not offset), typically shown as "Closing balance", "Amount owing", or "Balance" column
 - The "balance" field per transaction is the running loan balance after that transaction (NOT offset account)

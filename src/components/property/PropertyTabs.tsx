@@ -900,6 +900,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
   const [deprPreviewSource, setDeprPreviewSource] = useState('')
   const [deprConfirming, setDeprConfirming] = useState(false)
   const [deprPastCollapsed, setDeprPastCollapsed] = useState(true)
+  const [acqOthersExpanded, setAcqOthersExpanded] = useState(false)
   const [deprDeleteMode, setDeprDeleteMode] = useState(false)
   const [deprSelected, setDeprSelected] = useState<Set<string>>(new Set())
   const [deprBulkDeleting, setDeprBulkDeleting] = useState(false)
@@ -4032,8 +4033,33 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
 
                     {/* Acquisition */}
                     {sectionLabel('Acquisition')}
-                    {totalAcq > 0
-                      ? acquisitionCosts.map(c => row(c.type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), formatCurrency(c.amount)))
+                    {totalAcq > 0 ? (() => {
+                      const named = acquisitionCosts.filter(c => c.type !== 'other')
+                      const others = acquisitionCosts.filter(c => c.type === 'other')
+                      const othersTotal = others.reduce((s, c) => s + c.amount, 0)
+                      return (
+                        <>
+                          {named.map((c, i) => <div key={i}>{row(ACQ_LABELS[c.type], formatCurrency(c.amount))}</div>)}
+                          {others.length > 0 && (
+                            <>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, alignItems: 'center' }}>
+                                <button onClick={() => setAcqOthersExpanded(v => !v)}
+                                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12.5, color: '#5c6478', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <span style={{ fontSize: 10, display: 'inline-block', transform: acqOthersExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .15s' }}>▶</span>
+                                  Other{others.length > 1 ? ` (${others.length})` : ''}
+                                </button>
+                                <span style={{ fontSize: 12.5, color: '#1a1e2e' }}>{formatCurrency(othersTotal)}</span>
+                              </div>
+                              {acqOthersExpanded && others.map((c, i) => (
+                                <div key={i} style={{ paddingLeft: 16 }}>
+                                  {row(c.description || 'Other', formatCurrency(c.amount))}
+                                </div>
+                              ))}
+                            </>
+                          )}
+                        </>
+                      )
+                    })()
                       : <div style={{ fontSize: 11.5, color: '#9ca3af' }}>No acquisition costs recorded.</div>}
                     {totalAcq > 0 && subtotalRow('Acquisition total', totalAcq)}
 
