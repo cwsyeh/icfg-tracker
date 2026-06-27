@@ -37,7 +37,7 @@ async function buildPropertyReports(
   ] = await Promise.all([
     supabase.from('valuations').select('*').in('property_id', propertyIds).order('valuation_date', { ascending: false }),
     supabase.from('loans').select('*').in('tax_property_id', propertyIds),
-    supabase.from('transactions').select('*').in('property_id', propertyIds).gte('transaction_date', '2019-07-01'),
+    supabase.from('transactions').select('*').in('property_id', propertyIds).gte('transaction_date', '2019-07-01').order('transaction_date', { ascending: true }).limit(10000),
     supabase.from('depreciation_schedules').select('*').in('property_id', propertyIds),
     supabase.from('property_acquisition_costs').select('*').in('property_id', propertyIds),
     supabase.from('loan_securities').select('*'),

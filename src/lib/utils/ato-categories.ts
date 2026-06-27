@@ -32,7 +32,7 @@ export const ATO_EXPENSE_LABELS: AtoScheduleLabel[] = [
   { label: 'P', name: 'Stationery, postage and telephone', types: ['other_expense'] },
   { label: 'Q', name: 'Travel expenses', types: [], notClaimable: true },
   { label: 'R', name: 'Water charges', types: ['water_rates'] },
-  { label: 'S', name: 'Sundry rental expenses', types: ['other_expense'] },
+  { label: 'S', name: 'Sundry rental expenses', types: ['other_expense', 'bank_fees'] },
 ]
 
 // Labels H, M, O all map to repairs_maintenance — only O is shown as the primary row.

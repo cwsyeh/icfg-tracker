@@ -66,7 +66,7 @@ export default function TaxView({ property: p, fy }: Props) {
     const totalExpenses = expenseRows.reduce((s, e) => s + e.amount, 0)
     const netResult = totalIncome - totalExpenses
 
-    const interestByLoan = p.activeLoans.map(loan => {
+    const interestByLoan = p.loans.map(loan => {
       const interest = fyTxns.filter(t => t.loan_id === loan.id && t.type === 'interest_expense').reduce((s, t) => s + Math.abs(t.amount), 0)
       return { loan, interest }
     }).filter(({ interest }) => interest > 0)
@@ -330,7 +330,7 @@ export default function TaxView({ property: p, fy }: Props) {
       )}
 
       {/* Loans with interest breakdown */}
-      {p.activeLoans.length > 0 && (
+      {interestByLoan.length > 0 && (
         <div style={CARD}>
           <div style={{ padding: '16px 22px 12px', borderBottom: '1px solid #e4e7f0' }}>
             <div style={{ fontSize: 14, fontWeight: 800 }}>Loan Details — {fy} Interest</div>
@@ -341,21 +341,26 @@ export default function TaxView({ property: p, fy }: Props) {
               <div key={h} style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.1em', textAlign: a as 'left' | 'right' }}>{h}</div>
             ))}
           </div>
-          {p.activeLoans.map((loan, i) => {
-            const fyInterest = interestByLoan.find(e => e.loan.id === loan.id)?.interest ?? null
+          {interestByLoan.map(({ loan, interest }, i) => {
+            const isClosed = loan.status === 'closed'
+            const activeVersion = p.activeLoans.find(l => l.id === loan.id)
+            const balance = activeVersion?.currentBalance ?? 0
             return (
-              <div key={loan.id} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 110px 110px 80px 140px 130px', gap: 12, padding: '13px 22px', borderBottom: i < p.activeLoans.length - 1 ? '1px solid #e4e7f0' : 'none', alignItems: 'center', fontSize: 13 }}>
+              <div key={loan.id} style={{ display: 'grid', gridTemplateColumns: '140px 1fr 110px 110px 80px 140px 130px', gap: 12, padding: '13px 22px', borderBottom: i < interestByLoan.length - 1 ? '1px solid #e4e7f0' : 'none', alignItems: 'center', fontSize: 13 }}>
                 <div style={{ color: '#6b7280', fontSize: 12 }}>{loan.purpose === 'investment' ? 'Investment' : 'Owner-occ.'}</div>
                 <div>
-                  <div style={{ fontWeight: 700 }}>{loan.lender}</div>
+                  <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {loan.lender}
+                    {isClosed && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', background: '#f3f4f6', color: '#9ca3af', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '.06em' }}>Closed</span>}
+                  </div>
                   {loan.account_suffix && <div style={{ fontSize: 10.5, color: '#9ca3af' }}>…{loan.account_suffix}</div>}
                 </div>
                 <div style={{ textAlign: 'right', color: '#6b7280', fontVariantNumeric: 'tabular-nums' }}>{loan.loan_limit ? formatCompact(loan.loan_limit) : '—'}</div>
-                <div style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{formatCompact(loan.currentBalance)}</div>
+                <div style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: isClosed ? '#9ca3af' : '#111827', fontWeight: isClosed ? 400 : 700 }}>{isClosed ? '—' : formatCompact(balance)}</div>
                 <div style={{ textAlign: 'right' }}>{loan.interest_rate.toFixed(2)}%</div>
                 <div style={{ fontSize: 12 }}>{loan.repayment_type === 'interest_only' ? 'Interest Only' : 'P&I'}</div>
-                <div style={{ textAlign: 'right', fontWeight: fyInterest ? 700 : 400, color: fyInterest ? '#b91c1c' : '#9ca3af', fontVariantNumeric: 'tabular-nums' }}>
-                  {fyInterest ? `(${formatCurrency(fyInterest)})` : 'No data'}
+                <div style={{ textAlign: 'right', fontWeight: 700, color: '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>
+                  ({formatCurrency(interest)})
                 </div>
               </div>
             )
