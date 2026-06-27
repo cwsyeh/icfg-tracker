@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
   // Verify ownership
   const { data: ownership } = await adminSupabase
-    .from('property_owners').select('id').eq('property_id', propertyId).eq('user_id', user.id).single()
+    .from('property_owners').select('id, role').eq('property_id', propertyId).eq('user_id', user.id).single()
   if (!ownership) return NextResponse.json({ error: 'Access denied' }, { status: 404 })
   if (ownership.role === 'viewer') return NextResponse.json({ error: 'View-only access' }, { status: 403 })
 
