@@ -52,9 +52,12 @@ export default function PropertyView({ property: p }: Props) {
     const equity = val - debt
     const ltv = val > 0 ? (debt / val) * 100 : null
 
-    // Find the latest FY with transactions
+    // Find the latest FY with transactions, capped at the current financial year
+    const now = new Date()
+    const currentFyYear = now.getMonth() >= 6 ? now.getFullYear() + 1 : now.getFullYear()
+    const currentFy = `FY${String(currentFyYear).slice(-2)}`
     const fyYears = [...new Set(p.allTransactions.map(t => t.financial_year))].sort()
-    const latestFy = fyYears[fyYears.length - 1] ?? 'FY26'
+    const latestFy = fyYears.filter(fy => fy <= currentFy).slice(-1)[0] ?? currentFy
     const grossRent = p.allTransactions.filter(t => t.financial_year === latestFy && t.type === 'rent_income').reduce((s, t) => s + t.amount, 0)
     const depEntry = p.depreciation.find(d => d.financial_year === latestFy)
     const nonCash = (depEntry?.division_43_amount ?? 0) + (depEntry?.plant_equipment_amount ?? 0)
