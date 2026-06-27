@@ -4256,7 +4256,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                             return (
                               <>
                                 {Object.entries(byType).map(([type, amt]) =>
-                                  row(TYPE_LABELS[type] ?? type.replace(/_/g, ' '), formatCurrency(amt))
+                                  <div key={type}>{row(TYPE_LABELS[type] ?? type.replace(/_/g, ' '), formatCurrency(amt))}</div>
                                 )}
                                 <div style={{ fontSize: 10.5, color: '#9ca3af', marginTop: -2 }}>
                                   From recorded transactions · click CAPITALISED badge on a transaction to exclude
