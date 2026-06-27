@@ -59,6 +59,9 @@ export async function POST(request: NextRequest) {
   if (!name || !street_address || !suburb || !state || !postcode || !usage || !property_type) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
+  if (usage === 'mixed' && (mixed_use_investment_percent == null || mixed_use_investment_percent <= 0 || mixed_use_investment_percent >= 100)) {
+    return NextResponse.json({ error: 'Mixed-use properties require an investment percentage between 1 and 99' }, { status: 400 })
+  }
 
   const { data: property, error: propError } = await adminSupabase
     .from('properties')

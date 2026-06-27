@@ -43,15 +43,15 @@ export default function PortfolioView({ properties }: Props) {
       const contractAmt = p.progressPayments.reduce((s, pp) => s + (pp.amount ?? 0), 0)
       const totalAcq = p.acquisitionCosts.reduce((s, c) => s + c.amount, 0)
       const totalCapEx = p.allTransactions.filter(t => t.type === 'capital_expense').reduce((s, t) => s + Math.abs(t.amount), 0)
-      const totalDepr = p.depreciation.reduce((s, d) => s + (d.division_43_amount ?? 0) + (d.plant_equipment_amount ?? 0), 0)
-      const costBase = (pr.purchase_price ?? 0) + contractAmt + totalAcq + totalCapEx - totalDepr
+      const costBase = (pr.purchase_price ?? 0) + contractAmt + totalAcq + totalCapEx
       const estimatedGain = isSold && pr.sold_price !== null ? netProceeds - costBase : null
       // Sold: show capital gain; OTP pre-completion: show deposit_paid (already in latestValuation)
       const val = isSold ? (estimatedGain ?? 0) : (p.latestValuation ?? 0)
       const debt = p.activeLoans.reduce((s, l) => s + l.currentBalance, 0)
       const equity = isSold ? null : val - debt
       const ltv = !isSold && !isOtpPre && val > 0 ? Math.round((debt / val) * 100) : null
-      const currentYear = 'FY26'
+      const now = new Date()
+      const currentYear = `FY${String(now.getMonth() >= 6 ? now.getFullYear() + 1 : now.getFullYear()).slice(-2)}`
       const grossRent = p.allTransactions.filter(t => t.financial_year === currentYear && t.type === 'rent_income').reduce((s, t) => s + t.amount, 0)
       const depEntry = p.depreciation.find(d => d.financial_year === currentYear)
       const nonCash = (depEntry?.division_43_amount ?? 0) + (depEntry?.plant_equipment_amount ?? 0)
@@ -244,9 +244,9 @@ export default function PortfolioView({ properties }: Props) {
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: 14, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{val > 0 ? formatCompact(val) : '—'}</div>
                   {isSold
-                    ? <div style={{ fontSize: 9.5, color: '#9ca3af', marginTop: 1 }}>Est. capital gain</div>
+                    ? <div style={{ fontSize: 9.5, color: '#9ca3af', marginTop: 1 }}>Realised Capital Gain (est.)</div>
                     : isOtpPre
-                      ? <div style={{ fontSize: 9.5, color: '#b45309', marginTop: 1 }}>Deposit paid</div>
+                      ? <div style={{ fontSize: 9.5, color: '#b45309', marginTop: 1 }}>Deposit only</div>
                       : p.isValFallback && <div style={{ fontSize: 9.5, color: '#9ca3af', marginTop: 1 }}>est. cost</div>}
                 </div>
                 <div style={{ textAlign: 'right' }}>

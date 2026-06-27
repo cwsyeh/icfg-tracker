@@ -3384,10 +3384,10 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                     : { actual: 0, estimated: 0, hasActual: false }
                   // Only confirmed actual interest goes into the cost base
                   const capInterest = capResolved.actual
-                  const costBase = propertyValue + totalAcq + capInterest + totalCapEx - totalDepr
+                  const costBase = propertyValue + totalAcq + capInterest + totalCapEx
                   return acquisitionCosts.length > 0 || totalCapEx > 0 || isHnL ? (
                     <div style={{ paddingTop: 10, borderTop: '1px solid #f0f2f7' }}>
-                      <div style={{ ...sHead, marginBottom: 8 }}>Cost Base</div>
+                      <div style={{ ...sHead, marginBottom: 8 }}>Cost Base (CGT)</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                         {/* Line 1: Land & Build (or Purchase) */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
@@ -3409,9 +3409,9 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                           </div>
                         )}
                         {/* Adjustments */}
-                        {totalCapEx > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}><span style={{ color: '#5c6478' }}>Capital works</span><span>{formatCurrency(totalCapEx)}</span></div>}
-                        {totalDepr > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}><span style={{ color: '#5c6478' }}>Less depreciation</span><span style={{ color: '#c8332a' }}>({formatCurrency(totalDepr)})</span></div>}
+                        {totalCapEx > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}><span style={{ color: '#5c6478' }}>Capital improvements</span><span>{formatCurrency(totalCapEx)}</span></div>}
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 700, paddingTop: 6, borderTop: '1px solid #e4e7f0', marginTop: 2 }}><span>Cost base</span><span>{formatCurrency(costBase)}</span></div>
+                        {totalDepr > 0 && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>Note: {formatCurrency(totalDepr)} depreciation claimed — does not reduce CGT cost base.</div>}
                       </div>
                     </div>
                   ) : null
@@ -3425,7 +3425,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                 const totalCapExSale = transactions.filter(tx => tx.type === 'capital_expense').reduce((s, tx) => s + Math.abs(tx.amount), 0)
                 const totalDeprSale = depreciation.filter(d => d.financial_year <= currentFYInfo().label).reduce((s, d) => s + d.division_43_amount + d.plant_equipment_amount, 0)
                 const contractAmtSale = progressPayments.reduce((s, p) => s + (p.amount ?? 0), 0)
-                const costBaseSale = (property.purchase_price ?? 0) + contractAmtSale + totalAcqSale + totalCapExSale - totalDeprSale
+                const costBaseSale = (property.purchase_price ?? 0) + contractAmtSale + totalAcqSale + totalCapExSale
                 const realisedGain = netProceeds - costBaseSale
                 const sRow = (label: string, value: string, color?: string) => (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
@@ -3487,7 +3487,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                         <>
                           <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' as const, letterSpacing: '.07em', marginTop: 10, marginBottom: 2 }}>Capital gain / loss</div>
                           {sRow('Net proceeds', formatCurrency(netProceeds))}
-                          {sRow('Less: adjusted cost base', `− ${formatCurrency(costBaseSale)}`)}
+                          {sRow('Less: cost base', `− ${formatCurrency(costBaseSale)}`)}
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13.5, fontWeight: 800, paddingTop: 8, marginTop: 4, borderTop: '2px solid #e4e7f0' }}>
                             <span>Realised {realisedGain >= 0 ? 'gain' : 'loss'}</span>
                             <span style={{ color: realisedGain >= 0 ? '#15803d' : '#c8332a' }}>
@@ -3500,7 +3500,8 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                               <span style={{ fontWeight: 600, color: '#15803d' }}>+{formatCurrency(realisedGain / 2)}</span>
                             </div>
                           )}
-                          <div style={{ fontSize: 10.5, color: '#9ca3af', marginTop: 6 }}>Indicative only — consult your accountant for final CGT position.</div>
+                          {totalDeprSale > 0 && <div style={{ fontSize: 10.5, color: '#9ca3af', marginTop: 4 }}>Note: {formatCurrency(totalDeprSale)} depreciation claimed — does not reduce CGT cost base.</div>}
+                          <div style={{ fontSize: 10.5, color: '#9ca3af', marginTop: 4 }}>Indicative only — consult your accountant for final CGT position.</div>
                         </>
                       )}
                     </div>
@@ -4173,7 +4174,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
               // Only confirmed actual interest is included in the cost base
               const capInterest = capResolved.actual
               const propertySubtotal = (property.purchase_price ?? 0) + contractAmt
-              const costBase = propertySubtotal + totalAcq + capInterest + totalCapEx - totalDepr
+              const costBase = propertySubtotal + totalAcq + capInterest + totalCapEx
 
               const row = (label: string, value: string, sub?: boolean) => (
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: sub ? 11.5 : 12.5, color: sub ? '#5c6478' : '#1a1e2e' }}>
@@ -4291,15 +4292,14 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                       </>
                     )}
 
-                    {/* Capital works & depreciation */}
+                    {/* Capital works & depreciation note */}
                     {(totalCapEx > 0 || totalDepr > 0) && (
                       <>
                         {sectionLabel('Adjustments')}
                         {totalCapEx > 0 && row('Capital improvements', `+ ${formatCurrency(totalCapEx)}`)}
                         {totalDepr > 0 && (
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
-                            <span style={{ color: '#5c6478' }}>Less: depreciation claimed</span>
-                            <span style={{ color: '#c8332a' }}>− {formatCurrency(totalDepr)}</span>
+                          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+                            Note: {formatCurrency(totalDepr)} depreciation claimed — does not reduce CGT cost base.
                           </div>
                         )}
                       </>

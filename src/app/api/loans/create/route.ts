@@ -26,6 +26,16 @@ export async function POST(request: NextRequest) {
   const { propertyId, ...fields } = body
   if (!propertyId) return NextResponse.json({ error: 'Missing propertyId' }, { status: 400 })
 
+  // Validate loan fields
+  const rate = fields.interest_rate as number | undefined
+  const term = fields.loan_term_years as number | undefined
+  const ioPeriod = fields.io_period_years as number | undefined
+  const amount = fields.original_amount as number | undefined
+  if (rate != null && (rate < 0 || rate > 30)) return NextResponse.json({ error: 'Interest rate must be between 0% and 30%' }, { status: 400 })
+  if (term != null && term <= 0) return NextResponse.json({ error: 'Loan term must be greater than 0 years' }, { status: 400 })
+  if (amount != null && amount <= 0) return NextResponse.json({ error: 'Loan amount must be greater than 0' }, { status: 400 })
+  if (ioPeriod != null && term != null && ioPeriod > term) return NextResponse.json({ error: 'IO period cannot exceed the loan term' }, { status: 400 })
+
   // Verify ownership
   const { data: ownership } = await adminSupabase
     .from('property_owners')
@@ -52,7 +62,7 @@ export async function POST(request: NextRequest) {
   const { data: newLoan, error } = await adminSupabase
     .from('loans')
     .insert(safe)
-    .select('id, role')
+    .select('id')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

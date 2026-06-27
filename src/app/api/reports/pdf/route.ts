@@ -229,7 +229,7 @@ async function buildTaxPdf(p: PropertyReport, fy: FyLabel, ownerName: string) {
   const cumulativeDiv43 = p.depreciation
     .filter(d => fyFullYear(d.financial_year as FyLabel) <= fyYear)
     .reduce((s, d) => s + (d.division_43_amount ?? 0), 0)
-  const costBaseTotal = purchase + acquisitionTotal + capitalImprovements - (cumulativeDiv40 + cumulativeDiv43)
+  const costBaseTotal = purchase + acquisitionTotal + capitalImprovements
   const val = p.latestValuation ?? 0
 
   const now = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })

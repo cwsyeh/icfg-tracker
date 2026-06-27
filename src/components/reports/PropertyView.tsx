@@ -143,7 +143,7 @@ export default function PropertyView({ property: p }: Props) {
     const totalAcq = p.acquisitionCosts.reduce((s, c) => s + c.amount, 0)
     const totalCapEx = p.allTransactions.filter(t => t.type === 'capital_expense').reduce((s, t) => s + Math.abs(t.amount), 0)
     const totalDepr = p.depreciation.reduce((s, d) => s + (d.division_43_amount ?? 0) + (d.plant_equipment_amount ?? 0), 0)
-    const costBasis = (p.property.purchase_price ?? 0) + contractAmt + totalAcq + totalCapEx - totalDepr
+    const costBasis = (p.property.purchase_price ?? 0) + contractAmt + totalAcq + totalCapEx
     const estimatedGain = isSold && p.property.sold_price !== null ? netProceeds - costBasis : null
 
     // Capital Growth chart: combine all valuation dates with annual FY-end markers
@@ -255,7 +255,7 @@ export default function PropertyView({ property: p }: Props) {
             {(data.isSold ? [
               { label: 'Sold Price', value: prop.sold_price ? formatCompact(prop.sold_price) : '—', sub: prop.sold_date ? `Settled ${prop.sold_date}` : 'Settlement date unknown' },
               { label: 'Cost Basis', value: data.costBasis > 0 ? formatCompact(data.costBasis) : '—', sub: 'Purchase + construction' },
-              { label: 'Est. Capital Gain', value: data.estimatedGain !== null ? formatCompact(data.estimatedGain) : '—', sub: 'Sold price − cost basis', pos: data.estimatedGain !== null && data.estimatedGain > 0 },
+              { label: 'Realised Capital Gain (est.)', value: data.estimatedGain !== null ? formatCompact(data.estimatedGain) : '—', sub: 'Net proceeds − cost basis', pos: data.estimatedGain !== null && data.estimatedGain > 0 },
               { label: 'Avg. Capital Growth', value: data.annualGrowthRate !== null ? `${data.annualGrowthRate.toFixed(1)}% p.a.` : '—', sub: 'Compounded annual return' },
               (() => { const fmt = (n: number) => n < 0 ? `(${formatCompact(Math.abs(n))})` : formatCompact(n); const pa = data.ownershipDays && data.ownershipDays > 0 ? Math.round(data.totalRentalIncome / data.ownershipDays * 365) : null; return { label: 'Net Rental Result', value: data.totalRentalIncome !== 0 ? `${fmt(data.totalRentalIncome)}${pa !== null ? ` / ${fmt(pa)} p.a.` : ''}` : '—', sub: 'Income minus expenses', neg: data.totalRentalIncome < 0 } })()
             ] : data.isPpor ? [
@@ -335,9 +335,9 @@ export default function PropertyView({ property: p }: Props) {
                       {(p.property.purchase_price ?? 0) > 0 && row('Purchase price', formatCurrency(p.property.purchase_price ?? 0))}
                       {data.contractAmt > 0 && row('Construction contract', formatCurrency(data.contractAmt))}
                       {data.totalAcq > 0 && row('Acquisition costs', formatCurrency(data.totalAcq))}
-                      {data.totalCapEx > 0 && row('Capital expenses', formatCurrency(data.totalCapEx))}
-                      {data.totalDepr > 0 && row('Less depreciation', `(${formatCurrency(data.totalDepr)})`, '#b91c1c')}
+                      {data.totalCapEx > 0 && row('Capital improvements', formatCurrency(data.totalCapEx))}
                       {row('Cost basis total', formatCurrency(data.costBasis), '#374151', true, true)}
+                      {data.totalDepr > 0 && <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4, paddingTop: 4 }}>Note: {formatCurrency(data.totalDepr)} depreciation claimed — does not reduce CGT cost base.</div>}
                       {row('Est. capital gain', gain !== null ? fmt(gain) : '—', gain !== null && gain >= 0 ? '#15803d' : '#b91c1c', true, true)}
                     </>
                   )

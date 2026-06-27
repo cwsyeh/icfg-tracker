@@ -89,8 +89,7 @@ export default async function PortfolioPage() {
     const contractAmt = propProgress.reduce((s, pp) => s + (pp.amount ?? 0), 0)
     const totalAcq = propAcqCosts.reduce((s, c) => s + c.amount, 0)
     const totalCapEx = propCapEx.reduce((s, t) => s + Math.abs(t.amount), 0)
-    const totalDepr = propDepr.reduce((s, d) => s + (d.division_43_amount ?? 0) + (d.plant_equipment_amount ?? 0), 0)
-    const costBase = (prop.purchase_price ?? 0) + contractAmt + totalAcq + totalCapEx - totalDepr
+    const costBase = (prop.purchase_price ?? 0) + contractAmt + totalAcq + totalCapEx
     const estimatedGain = isSold && prop.sold_price !== null ? netProceeds - costBase : null
     const displayVal = isSold
       ? estimatedGain  // show capital gain for sold properties
@@ -116,8 +115,8 @@ export default async function PortfolioPage() {
       return sum + bal
     }, 0)
 
-    const equity = displayVal !== null ? displayVal - loanBalance : null
-    const ltv = displayVal ? Math.round((loanBalance / displayVal) * 100) : null
+    const equity = isSold ? null : (displayVal !== null ? displayVal - loanBalance : null)
+    const ltv = isSold ? null : (displayVal ? Math.round((loanBalance / displayVal) * 100) : null)
 
     return { ...prop, share_percentage: o.share_percentage, latest_valuation: displayVal, is_val_fallback: isValFallback, loan_balance: loanBalance, equity, ltv, estimated_gain: estimatedGain, excluded_from_total: excludedFromTotal }
   })
@@ -252,9 +251,9 @@ export default async function PortfolioPage() {
                     </div>
                     <div style={{ fontSize: 11, marginTop: 2, color: p.estimated_gain !== null ? '#15803d' : p.status === 'sold' ? '#9ca3af' : p.is_val_fallback ? '#9ca3af' : '#9ca3af' }}>
                       {p.status === 'sold'
-                        ? 'Est. capital gain'
+                        ? 'Realised Capital Gain (est.)'
                         : p.property_type === 'off_the_plan' && p.construction_status !== 'completed'
-                          ? 'Deposit paid'
+                          ? 'Deposit only'
                           : p.is_val_fallback
                             ? 'Purchase cost (est.)'
                             : p.share_percentage < 100
