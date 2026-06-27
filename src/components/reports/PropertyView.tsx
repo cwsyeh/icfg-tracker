@@ -273,7 +273,7 @@ export default function PropertyView({ property: p }: Props) {
             ]).map((k, i) => (
               <div key={k.label} style={{ paddingRight: i < 4 ? 20 : 0 }}>
                 <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.13em', textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', marginBottom: 8 }}>{k.label}</div>
-                <div style={{ fontSize: 20, fontWeight: 900, lineHeight: 1, color: k.neg ? '#fca5a5' : (k as {pos?: boolean}).pos ? '#86efac' : '#fff', fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
+                <div style={{ fontSize: 20, fontWeight: 900, lineHeight: 1, color: (k as {neg?: boolean}).neg ? '#fca5a5' : (k as {pos?: boolean}).pos ? '#86efac' : '#fff', fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
                 {k.sub && <div style={{ fontSize: 10, color: 'rgba(255,255,255,.3)', marginTop: 5 }}>{k.sub}</div>}
               </div>
             ))}
