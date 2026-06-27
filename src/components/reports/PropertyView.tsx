@@ -281,6 +281,19 @@ export default function PropertyView({ property: p }: Props) {
         </div>
       </div>
 
+      {/* PPOR — tax not applicable notice */}
+      {data.isPpor && (
+        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: '14px 20px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ fontSize: 18, lineHeight: 1, marginTop: 1 }}>⚠</div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#c2410c', marginBottom: 3 }}>ATO Rental Schedule Not Applicable — PPOR</div>
+            <div style={{ fontSize: 12, color: '#9a3412', lineHeight: 1.5 }}>
+              This property is classified as your Principal Place of Residence (PPOR). Rental income and deductions under the ATO Rental Property Schedule (NAT 1836) generally do not apply for periods it was your primary residence. Capital gains may be exempt or partially exempt under the main residence exemption. Consult your accountant before lodging any tax return based on this report.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Charts */}
       {data.chartData.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 18 }}>

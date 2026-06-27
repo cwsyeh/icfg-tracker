@@ -327,6 +327,14 @@ async function buildTaxPdf(p: PropertyReport, fy: FyLabel, ownerName: string) {
         )
       ),
 
+      // PPOR warning banner
+      prop.usage === 'ppor' ? R(View, { style: { marginHorizontal: 44, marginBottom: 10, padding: '10 14', backgroundColor: '#fff7ed', borderWidth: 1, borderColor: '#fed7aa', borderRadius: 4, flexDirection: 'row', gap: 8 } },
+        R(Text, { style: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#c2410c' } }, '⚠  ATO Rental Schedule Not Applicable — PPOR'),
+        R(Text, { style: { flex: 1, fontSize: 8, color: '#9a3412', lineHeight: 1.4, paddingLeft: 8 } },
+          'This property is classified as your Principal Place of Residence (PPOR). Rental income deductions and the ATO Rental Property Schedule (NAT 1836) generally do not apply for periods it was your primary residence. Capital gains may be exempt under the main residence exemption. Consult your accountant before lodging.'
+        ),
+      ) : null,
+
       R(View, { style: s.body },
 
         // Column header
