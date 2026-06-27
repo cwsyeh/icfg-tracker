@@ -96,7 +96,7 @@ export default function TaxView({ property: p, fy }: Props) {
       .filter(d => fyFullYear(d.financial_year as FyLabel) <= fyYear)
       .reduce((s, d) => s + (d.division_43_amount ?? 0), 0)
     const cumulativeDepreciation = cumulativeDiv40 + cumulativeDiv43
-    const costBase = purchase + acquisitionTotal + capitalImprovements - cumulativeDepreciation
+    const costBase = purchase + acquisitionTotal + capitalImprovements
 
     return { grossRent, otherIncome, totalIncome, rentTxns, otherIncomeTxns, expenseRows, totalExpenses, netResult, interestByLoan, costBase: { purchase, landPrice, drawnBuildCost, acquisitionTotal, capitalImprovements, cumulativeDepreciation, cumulativeDiv40, cumulativeDiv43, total: costBase } }
   }, [p, fy])
@@ -392,18 +392,17 @@ export default function TaxView({ property: p, fy }: Props) {
         <div style={CARD}>
           <div style={{ padding: '16px 22px 12px', borderBottom: '1px solid #e4e7f0' }}>
             <div style={{ fontSize: 14, fontWeight: 800 }}>Cost Base — As at 30 Jun {fyYear}</div>
-            <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 3 }}>Relevant for CGT planning. Cost base reduces each year depreciation is claimed.</div>
+            <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 3 }}>Relevant for CGT planning. Depreciation claimed does not reduce your CGT cost base.</div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 1, padding: 1 }}>
             {[
               { label: 'Purchase Price', value: formatCurrency(costBase.purchase), sub: prop.property_type === 'house_and_land' ? `Land: ${formatCurrency(costBase.landPrice)} · Build drawn: ${formatCurrency(costBase.drawnBuildCost)}` : (prop.purchase_date ?? undefined) },
               { label: 'Acquisition Costs', value: formatCurrency(costBase.acquisitionTotal), sub: 'Stamp duty, legal, inspections etc.' },
               { label: 'Capital Improvements', value: formatCurrency(costBase.capitalImprovements), sub: 'Capital expenses to date' },
-              { label: `Cumulative Depreciation (to ${fy})`, value: `(${formatCurrency(costBase.cumulativeDepreciation)})`, sub: `Div 40: ${formatCurrency(costBase.cumulativeDiv40)} · Div 43: ${formatCurrency(costBase.cumulativeDiv43)}`, neg: true },
             ].map(item => (
               <div key={item.label} style={{ padding: '16px 20px', background: '#fff', border: '1px solid #e4e7f0', margin: -1 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 6 }}>{item.label}</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: item.neg ? '#b91c1c' : '#111827', fontVariantNumeric: 'tabular-nums' }}>{item.value}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#111827', fontVariantNumeric: 'tabular-nums' }}>{item.value}</div>
                 {item.sub && <div style={{ fontSize: 10.5, color: '#9ca3af', marginTop: 4 }}>{item.sub}</div>}
               </div>
             ))}
@@ -422,8 +421,18 @@ export default function TaxView({ property: p, fy }: Props) {
               <div style={{ fontSize: 10, color: 'rgba(255,255,255,.4)', marginTop: 4 }}>cost base</div>
             </div>
           </div>
+          {costBase.cumulativeDepreciation > 0 && (
+            <div style={{ padding: '10px 20px', background: '#f9fafb', borderTop: '1px solid #e4e7f0', fontSize: 11, color: '#6b7280' }}>
+              Note: {formatCurrency(costBase.cumulativeDepreciation)} cumulative depreciation claimed (Div 40: {formatCurrency(costBase.cumulativeDiv40)} · Div 43: {formatCurrency(costBase.cumulativeDiv43)}) — does not reduce CGT cost base.
+            </div>
+          )}
         </div>
       )}
+
+      {/* Transaction date disclaimer */}
+      <div style={{ padding: '10px 16px', background: '#f9fafb', border: '1px solid #e4e7f0', borderRadius: 8, fontSize: 11, color: '#6b7280', lineHeight: 1.6 }}>
+        <strong style={{ color: '#374151' }}>Disclosure:</strong> All figures are recorded on the basis of transaction date and make no adjustments for accruals. Income and expenses may differ from amounts reported in financial statements prepared on an accrual basis.
+      </div>
 
       {/* ATO code legend */}
       <div style={CARD}>

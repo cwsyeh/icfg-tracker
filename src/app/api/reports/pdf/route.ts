@@ -451,7 +451,7 @@ async function buildTaxPdf(p: PropertyReport, fy: FyLabel, ownerName: string) {
             ),
             loansWithDetail.some(l => l.fyInterest > 0)
               ? R(View, { style: { ...s.tRow, borderBottomWidth: 1.5, borderBottomColor: NAVY } },
-                  R(Text, { style: { flex: 1, fontSize: 8, fontFamily: 'Helvetica-Bold' } }, 'Total interest (Label J)'),
+                  R(Text, { style: { flex: 1, fontSize: 8, fontFamily: 'Helvetica-Bold' } }, 'Total interest (J)'),
                   R(Text, { style: { width: 64 } }, ''),
                   R(Text, { style: { width: 38 } }, ''),
                   R(Text, { style: { width: 68, ...s.right, fontFamily: 'Helvetica-Bold', color: RED } },
@@ -471,15 +471,13 @@ async function buildTaxPdf(p: PropertyReport, fy: FyLabel, ownerName: string) {
               { label: 'Purchase price', value: formatCurrency(purchase), sub: prop.property_type === 'house_and_land' ? `Land: ${formatCurrency(landPrice)} · Build drawn: ${formatCurrency(drawnBuildCost)}` : undefined },
               { label: 'Acquisition costs', value: formatCurrency(acquisitionTotal), sub: 'Stamp duty, legal, etc.' },
               { label: 'Capital improvements', value: formatCurrency(capitalImprovements), sub: 'Cumulative to date' },
-              { label: 'Less: Div 40 depreciation', value: cumulativeDiv40 > 0 ? `(${formatCurrency(cumulativeDiv40)})` : '—', neg: cumulativeDiv40 > 0 },
-              { label: 'Less: Div 43 depreciation', value: cumulativeDiv43 > 0 ? `(${formatCurrency(cumulativeDiv43)})` : '—', neg: cumulativeDiv43 > 0 },
             ].map((item, i) =>
               R(View, { key: item.label, style: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: BORDER, backgroundColor: i % 2 === 1 ? ALT : '#fff' } },
                 R(View, { style: { flex: 1, paddingRight: 8 } },
                   R(Text, { style: { fontSize: 8.5, color: BODY } }, item.label),
                   item.sub ? R(Text, { style: { fontSize: 7, color: MUTED, marginTop: 2 } }, item.sub) : null,
                 ),
-                R(Text, { style: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: item.neg ? RED : BODY } }, item.value),
+                R(Text, { style: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: BODY } }, item.value),
               )
             ),
             R(View, { style: { backgroundColor: NAVY, padding: '12 14', marginTop: 4, borderRadius: 3, flexDirection: 'row', alignItems: 'center' } },
@@ -495,9 +493,26 @@ async function buildTaxPdf(p: PropertyReport, fy: FyLabel, ownerName: string) {
                 formatCurrency(costBaseTotal)
               ),
             ),
-            R(Text, { style: { fontSize: 7, color: MUTED, marginTop: 6 } },
-              'Cost base reduces each year depreciation is claimed. Relevant for CGT at time of sale.'
-            ),
+            ...(cumulativeDiv40 > 0 || cumulativeDiv43 > 0 ? [
+              R(View, { key: 'depr-note', style: { marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: BORDER } },
+                R(Text, { style: { fontSize: 6.5, fontFamily: 'Helvetica-Bold', color: MUTED, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 } }, 'Depreciation Claimed (informational only)'),
+                cumulativeDiv40 > 0 ? R(View, { style: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 } },
+                  R(Text, { style: { fontSize: 8, color: MUTED } }, 'Div 40 — Plant & equipment'),
+                  R(Text, { style: { fontSize: 8, color: MUTED } }, `(${formatCurrency(cumulativeDiv40)})`),
+                ) : null,
+                cumulativeDiv43 > 0 ? R(View, { style: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 } },
+                  R(Text, { style: { fontSize: 8, color: MUTED } }, 'Div 43 — Capital works'),
+                  R(Text, { style: { fontSize: 8, color: MUTED } }, `(${formatCurrency(cumulativeDiv43)})`),
+                ) : null,
+                R(Text, { style: { fontSize: 6.5, color: MUTED, marginTop: 4, fontStyle: 'italic' } },
+                  'Depreciation claimed does not reduce CGT cost base under Australian tax law.'
+                ),
+              ),
+            ] : [
+              R(Text, { key: 'no-depr-note', style: { fontSize: 7, color: MUTED, marginTop: 6 } },
+                'Depreciation claimed does not reduce CGT cost base under Australian tax law.'
+              ),
+            ]),
           ),
         ] : []),
       ),
@@ -520,6 +535,11 @@ async function buildTaxPdf(p: PropertyReport, fy: FyLabel, ownerName: string) {
             ),
             R(View, { key: 'ref-note', style: { width: '100%', marginTop: 2 } },
               R(Text, { style: { fontSize: 6, color: DIMMED } }, '† Not deductible from 1 Jul 2017 (ATO ruling)'),
+            ),
+            R(View, { key: 'txn-disclaimer', style: { width: '100%', marginTop: 8, paddingTop: 6, borderTopWidth: 1, borderTopColor: BORDER } },
+              R(Text, { style: { fontSize: 6, color: DIMMED } },
+                'Disclosure: All figures are recorded on the basis of transaction date and make no adjustments for accruals. Income and expenses may differ from amounts reported in financial statements prepared on an accrual basis.'
+              ),
             ),
           ),
         ),

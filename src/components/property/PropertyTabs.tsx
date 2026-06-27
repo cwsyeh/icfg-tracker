@@ -4768,7 +4768,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                   </table>
 
                   <div style={{ marginTop: 16, padding: '12px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: 12, color: '#92400e', lineHeight: 1.6 }}>
-                    <strong>Cost base note:</strong> Cumulative depreciation claimed reduces your adjusted cost base, which increases capital gains tax exposure at sale. This is reflected automatically in the Finance tab cost base calculation.
+                    <strong>Cost base note:</strong> Depreciation claimed does not reduce your CGT cost base under Australian tax law. It is shown above for reference only.
                   </div>
                 </>
                 )
