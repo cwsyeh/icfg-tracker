@@ -57,8 +57,9 @@ export default function TaxView({ property: p, fy }: Props) {
         amount = l.label === 'D' ? (depEntry?.plant_equipment_amount ?? 0) : (depEntry?.division_43_amount ?? 0)
         txns = []
       } else {
-        txns = fyTxns.filter(t => l.types.includes(t.type as never) && t.amount < 0)
-        amount = txns.reduce((s, t) => s + Math.abs(t.amount), 0)
+        txns = fyTxns.filter(t => l.types.includes(t.type as never))
+        const net = txns.reduce((s, t) => s + t.amount, 0)
+        amount = net < 0 ? -net : 0  // net expense as positive; 0 if net credit
       }
       return { label: l.label, name: l.name, amount, nonCash: !!l.nonCash, txns }
     }).filter(e => e.amount > 0)
@@ -119,8 +120,10 @@ export default function TaxView({ property: p, fy }: Props) {
             <span />
             <span style={{ color: '#6b7280' }}>{t.transaction_date}</span>
             <span style={{ color: '#374151' }}>{t.description || '—'}</span>
-            <span style={{ textAlign: 'right', color: isIncome ? '#15803d' : '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>
-              {isIncome ? formatCurrency(t.amount) : `(${formatCurrency(Math.abs(t.amount))})`}
+            <span style={{ textAlign: 'right', color: isIncome ? '#15803d' : t.amount > 0 ? '#15803d' : '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>
+              {isIncome
+                ? formatCurrency(t.amount)
+                : t.amount > 0 ? `+${formatCurrency(t.amount)}` : `(${formatCurrency(-t.amount)})`}
             </span>
           </div>
         ))}
@@ -128,7 +131,10 @@ export default function TaxView({ property: p, fy }: Props) {
           <span /><span />
           <span style={{ fontSize: 11, fontWeight: 700, color: isIncome ? '#15803d' : '#1d4ed8' }}>{txns.length} transaction{txns.length !== 1 ? 's' : ''}</span>
           <span style={{ textAlign: 'right', fontWeight: 800, color: isIncome ? '#15803d' : '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>
-            {isIncome ? formatCurrency(txns.reduce((s, t) => s + t.amount, 0)) : `(${formatCurrency(txns.reduce((s, t) => s + Math.abs(t.amount), 0))})`}
+            {(() => {
+              const net = txns.reduce((s, t) => s + t.amount, 0)
+              return isIncome ? formatCurrency(net) : net < 0 ? `(${formatCurrency(-net)})` : `+${formatCurrency(net)}`
+            })()}
           </span>
         </div>
       </div>
@@ -152,6 +158,19 @@ export default function TaxView({ property: p, fy }: Props) {
           </div>
         </div>
       </div>
+
+      {/* PPOR notice */}
+      {prop.usage === 'ppor' && (
+        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: '14px 20px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ fontSize: 18, lineHeight: 1, marginTop: 1 }}>⚠</div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#c2410c', marginBottom: 3 }}>Principal Place of Residence (PPOR)</div>
+            <div style={{ fontSize: 12, color: '#9a3412', lineHeight: 1.5 }}>
+              This property is classified as your PPOR. Rental deductions generally cannot be claimed for periods it was your primary residence. If it was rented for part of the year, consult your accountant to apportion income and expenses correctly. This report should not be used for tax lodgement without adjustment.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ATO Schedule */}
       <div style={CARD}>

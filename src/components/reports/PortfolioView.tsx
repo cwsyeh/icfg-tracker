@@ -35,10 +35,22 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
 export default function PortfolioView({ properties }: Props) {
   const { rows, totalVal, totalDebt, totalEquity, portfolioLTV, allLoans, ioAlerts, chartData } = useMemo(() => {
     const rows = properties.map(p => {
-      const val = p.latestValuation ?? 0
+      const pr = p.property
+      const isSold = pr.status === 'sold'
+      const isOtpPre = pr.property_type === 'off_the_plan' && pr.construction_status !== 'completed'
+      const totalSaleCosts = (p.saleCosts ?? []).reduce((s, c) => s + c.amount, 0)
+      const netProceeds = (pr.sold_price ?? 0) - totalSaleCosts
+      const contractAmt = p.progressPayments.reduce((s, pp) => s + (pp.amount ?? 0), 0)
+      const totalAcq = p.acquisitionCosts.reduce((s, c) => s + c.amount, 0)
+      const totalCapEx = p.allTransactions.filter(t => t.type === 'capital_expense').reduce((s, t) => s + Math.abs(t.amount), 0)
+      const totalDepr = p.depreciation.reduce((s, d) => s + (d.division_43_amount ?? 0) + (d.plant_equipment_amount ?? 0), 0)
+      const costBase = (pr.purchase_price ?? 0) + contractAmt + totalAcq + totalCapEx - totalDepr
+      const estimatedGain = isSold && pr.sold_price !== null ? netProceeds - costBase : null
+      // Sold: show capital gain; OTP pre-completion: show deposit_paid (already in latestValuation)
+      const val = isSold ? (estimatedGain ?? 0) : (p.latestValuation ?? 0)
       const debt = p.activeLoans.reduce((s, l) => s + l.currentBalance, 0)
-      const equity = val - debt
-      const ltv = val > 0 ? Math.round((debt / val) * 100) : null
+      const equity = isSold ? null : val - debt
+      const ltv = !isSold && !isOtpPre && val > 0 ? Math.round((debt / val) * 100) : null
       const currentYear = 'FY26'
       const grossRent = p.allTransactions.filter(t => t.financial_year === currentYear && t.type === 'rent_income').reduce((s, t) => s + t.amount, 0)
       const depEntry = p.depreciation.find(d => d.financial_year === currentYear)
@@ -47,9 +59,10 @@ export default function PortfolioView({ properties }: Props) {
       const netResult = grossRent - totalExp - nonCash
       const grossYield = val > 0 && grossRent > 0 ? (grossRent / val) * 100 : null
       const netYield = val > 0 && grossRent > 0 ? (netResult / val) * 100 : null
-      return { p, val, debt, equity, ltv, grossRent, grossYield, netYield }
+      return { p, val, debt, equity, ltv, grossRent, grossYield, netYield, isSold, isOtpPre, estimatedGain }
     })
 
+    // All properties included: sold at capital gain, OTP at deposit_paid, active at valuation
     const totalVal = rows.reduce((s, r) => s + r.val, 0)
     const totalDebt = rows.reduce((s, r) => s + r.debt, 0)
     const totalEquity = totalVal - totalDebt
@@ -62,12 +75,44 @@ export default function PortfolioView({ properties }: Props) {
       return months > 0 && months <= 6
     })
 
+    // Dynamic chart range from earliest property purchase to current FY
+    const earliestFy = properties.reduce((earliest: string | null, p) => {
+      const startDate = p.property.settlement_date ?? p.property.purchase_date
+      if (!startDate) return earliest
+      const [y, m] = startDate.split('-').map(Number)
+      const fy = `FY${String(m >= 7 ? y + 1 : y).slice(-2)}`
+      return !earliest || fy < earliest ? fy : earliest
+    }, null)
+    const currentFy = FY_CHART_RANGE[FY_CHART_RANGE.length - 1]
+    const chartStartYr = earliestFy ? 2000 + parseInt(earliestFy.slice(2)) : 2000 + parseInt(FY_CHART_RANGE[0].slice(2))
+    const chartEndYr = 2000 + parseInt(currentFy.slice(2))
+    const dynamicRange: string[] = Array.from({ length: chartEndYr - chartStartYr + 1 }, (_, i) => `FY${String(chartStartYr + i).slice(-2)}`)
+
     // Multi-year chart data
-    const chartData = FY_CHART_RANGE.map(fy => {
-      const endDate = fyEndDate(fy)
+    const chartData = dynamicRange.map(fy => {
+      const endDate = fyEndDate(fy as typeof FY_CHART_RANGE[number])
       const portfolioValue = properties.reduce((sum, p) => {
-        const v = valuationAsOf(p.allValuations, endDate, p.property.purchase_date && p.property.purchase_date <= endDate ? (p.property.purchase_price ?? null) : null)
-        return sum + (v ?? 0)
+        const pr = p.property
+        // Sold properties drop off after sold_date
+        if (pr.status === 'sold' && pr.sold_date && endDate > pr.sold_date) return sum
+        const fv = valuationAsOf(p.allValuations, endDate, null)
+        if (fv !== null) return sum + fv
+        if (!pr.purchase_date || pr.purchase_date > endDate) return sum
+        const settled = pr.settlement_date ? pr.settlement_date <= endDate : true
+        let fallback: number | null = null
+        if (pr.property_type === 'off_the_plan') {
+          fallback = settled ? (pr.purchase_price ?? 0) : (pr.deposit_paid ?? 0)
+        } else if (pr.property_type === 'house_and_land') {
+          const drawn = p.progressPayments
+            .filter(pp => pp.drawn_date && pp.drawn_date <= endDate)
+            .reduce((s, pp) => s + ((pp.bank_amount !== null || pp.self_amount !== null)
+              ? (pp.bank_amount ?? 0) + (pp.self_amount ?? 0)
+              : (pp.amount ?? 0)), 0)
+          fallback = (pr.purchase_price ?? 0) + drawn
+        } else {
+          fallback = pr.purchase_price ?? 0
+        }
+        return sum + (fallback || 0)
       }, 0)
       const portfolioDebt = properties.reduce((sum, p) => {
         return sum + p.loans.reduce((ls, loan) => {
@@ -172,9 +217,8 @@ export default function PortfolioView({ properties }: Props) {
               <div key={h} style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.1em', textAlign: a as 'left' | 'right' }}>{h}</div>
             ))}
           </div>
-          {rows.map(({ p, val, debt, equity, ltv, grossYield, netYield }) => {
-            const debtPct = val > 0 ? Math.min(100, (debt / val) * 100) : 100
-            const equityPct = val > 0 ? Math.max(0, (equity / val) * 100) : 0
+          {rows.map(({ p, val, debt, equity, ltv, grossYield, netYield, isSold, isOtpPre, estimatedGain }) => {
+            const ltvPct = ltv !== null ? Math.min(100, ltv) : null
             return (
               <div key={p.property.id} style={{ display: 'grid', gridTemplateColumns: '1fr 160px 110px 90px 130px', gap: 16, padding: '14px 22px', borderBottom: '1px solid #e4e7f0', alignItems: 'center' }}>
                 <div>
@@ -182,18 +226,28 @@ export default function PortfolioView({ properties }: Props) {
                   <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{p.property.suburb} {p.property.state}</div>
                 </div>
                 <div>
-                  <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', background: '#e4e7f0', marginBottom: 4 }}>
-                    <div style={{ width: `${debtPct}%`, background: '#2563a8' }} />
-                    <div style={{ width: `${equityPct}%`, background: '#f7c925' }} />
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5, fontWeight: 600 }}>
-                    <span style={{ color: '#2563a8' }}>D {formatCompact(debt)}</span>
-                    {equity > 0 ? <span style={{ color: '#92690d' }}>E {formatCompact(equity)}</span> : <span style={{ color: '#9ca3af' }}>No equity</span>}
-                  </div>
+                  {!isSold && (
+                    <>
+                      <div style={{
+                        height: 6, borderRadius: 3, overflow: 'hidden', marginBottom: 4,
+                        background: ltvPct !== null
+                          ? `linear-gradient(to right, #2563a8 ${ltvPct}%, #f7c925 ${ltvPct}%)`
+                          : '#e4e7f0'
+                      }} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9.5, fontWeight: 600 }}>
+                        <span style={{ color: '#2563a8' }}>D {formatCompact(debt)}</span>
+                        {equity !== null && equity > 0 ? <span style={{ color: '#92690d' }}>E {formatCompact(equity)}</span> : <span style={{ color: '#9ca3af' }}>No equity</span>}
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: 14, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{val > 0 ? formatCompact(val) : '—'}</div>
-                  {p.isValFallback && <div style={{ fontSize: 9.5, color: '#9ca3af', marginTop: 1 }}>est. cost</div>}
+                  {isSold
+                    ? <div style={{ fontSize: 9.5, color: '#9ca3af', marginTop: 1 }}>Est. capital gain</div>
+                    : isOtpPre
+                      ? <div style={{ fontSize: 9.5, color: '#b45309', marginTop: 1 }}>Deposit paid</div>
+                      : p.isValFallback && <div style={{ fontSize: 9.5, color: '#9ca3af', marginTop: 1 }}>est. cost</div>}
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: 16, fontWeight: 900, fontVariantNumeric: 'tabular-nums', color: ltv !== null && ltv > 100 ? '#dc2626' : ltv !== null && ltv > 80 ? '#b45309' : '#15803d' }}>

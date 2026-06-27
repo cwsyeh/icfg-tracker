@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { calculateLoanBalance, getIOExpiryDate, formatCurrency, formatCompact } from '@/lib/utils/finance'
 import { ATO_EXPENSE_LABELS } from '@/lib/utils/ato-categories'
-import type { Property, Loan, Transaction, Valuation, DepreciationSchedule, PropertyAcquisitionCost, ConstructionProgressPayment } from '@/lib/types/database'
+import type { Property, Loan, Transaction, Valuation, DepreciationSchedule, PropertyAcquisitionCost, PropertySaleCost, ConstructionProgressPayment } from '@/lib/types/database'
 import type { PropertyReport, FyLabel } from '@/components/reports/types'
 import { fyFullYear } from '@/components/reports/types'
 
@@ -12,6 +12,28 @@ import { fyFullYear } from '@/components/reports/types'
 async function renderPdf(doc: any): Promise<Buffer> {
   const { renderToBuffer } = await import('@react-pdf/renderer')
   return renderToBuffer(doc)
+}
+
+async function fetchAllTransactionsPdf(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  propertyIds: string[]
+): Promise<Transaction[]> {
+  const PAGE = 1000
+  const all: Transaction[] = []
+  let page = 0
+  while (true) {
+    const { data } = await supabase
+      .from('transactions')
+      .select('*')
+      .in('property_id', propertyIds)
+      .order('transaction_date', { ascending: true })
+      .range(page * PAGE, (page + 1) * PAGE - 1)
+    if (!data || data.length === 0) break
+    all.push(...(data as Transaction[]))
+    if (data.length < PAGE) break
+    page++
+  }
+  return all
 }
 
 async function buildPropertyReports(
@@ -29,19 +51,21 @@ async function buildPropertyReports(
   const [
     { data: valuations },
     { data: loans },
-    { data: transactions },
+    transactions,
     { data: depreciation },
     { data: acquisitionCosts },
     { data: loanSecurities },
     { data: progressPayments },
+    { data: saleCosts },
   ] = await Promise.all([
     supabase.from('valuations').select('*').in('property_id', propertyIds).order('valuation_date', { ascending: false }),
     supabase.from('loans').select('*').in('tax_property_id', propertyIds),
-    supabase.from('transactions').select('*').in('property_id', propertyIds).gte('transaction_date', '2019-07-01').order('transaction_date', { ascending: true }).limit(10000),
+    fetchAllTransactionsPdf(supabase, propertyIds),
     supabase.from('depreciation_schedules').select('*').in('property_id', propertyIds),
     supabase.from('property_acquisition_costs').select('*').in('property_id', propertyIds),
     supabase.from('loan_securities').select('*'),
     supabase.from('construction_progress_payments').select('*').in('property_id', propertyIds).order('sort_order', { ascending: true }),
+    supabase.from('property_sale_costs').select('*').in('property_id', propertyIds),
   ])
 
   const allLoanIds = (loans ?? []).map(l => l.id)
@@ -90,10 +114,11 @@ async function buildPropertyReports(
       latestValuation: displayVal,
       isValFallback: latestValuation === null && displayVal !== null,
       activeLoans,
-      allTransactions: (transactions ?? []).filter(t => t.property_id === prop.id) as Transaction[],
+      allTransactions: transactions.filter(t => t.property_id === prop.id) as Transaction[],
       depreciation: (depreciation ?? []).filter(d => d.property_id === prop.id) as DepreciationSchedule[],
       allValuations: propValuations,
       acquisitionCosts: (acquisitionCosts ?? []).filter(c => c.property_id === prop.id) as PropertyAcquisitionCost[],
+      saleCosts: (saleCosts ?? []).filter(c => c.property_id === prop.id) as PropertySaleCost[],
       progressPayments: (progressPayments ?? []).filter(pp => pp.property_id === prop.id) as ConstructionProgressPayment[],
       loans: propLoans,
     }

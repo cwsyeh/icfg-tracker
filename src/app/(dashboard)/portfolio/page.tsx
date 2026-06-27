@@ -3,7 +3,7 @@ import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { calculateLoanBalance, formatCurrency, getIOExpiryDate } from '@/lib/utils/finance'
-import type { Property, Loan, Valuation } from '@/lib/types/database'
+import type { Property, Loan, Valuation, PropertySaleCost, PropertyAcquisitionCost, DepreciationSchedule, ConstructionProgressPayment, Transaction } from '@/lib/types/database'
 
 const adminSupabase = createServiceClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,6 +19,8 @@ type PropertyRow = Property & {
   loan_balance: number
   equity: number | null
   ltv: number | null
+  estimated_gain: number | null
+  excluded_from_total: boolean
 }
 
 export default async function PortfolioPage() {
@@ -47,9 +49,22 @@ export default async function PortfolioPage() {
   const propertyIds = (ownerships ?? []).map(o => (o.properties as unknown as Property).id)
 
   // Fetch latest valuation and loans for each property
-  const [{ data: valuations }, { data: loans }] = await Promise.all([
+  const [
+    { data: valuations },
+    { data: loans },
+    { data: saleCosts },
+    { data: acquisitionCosts },
+    { data: depreciation },
+    { data: progressPayments },
+    { data: capExTxns },
+  ] = await Promise.all([
     supabase.from('valuations').select('*').in('property_id', propertyIds).order('valuation_date', { ascending: false }),
     supabase.from('loans').select('*').in('tax_property_id', propertyIds),
+    supabase.from('property_sale_costs').select('*').in('property_id', propertyIds),
+    supabase.from('property_acquisition_costs').select('*').in('property_id', propertyIds),
+    supabase.from('depreciation_schedules').select('*').in('property_id', propertyIds),
+    supabase.from('construction_progress_payments').select('*').in('property_id', propertyIds),
+    supabase.from('transactions').select('id,property_id,type,amount').in('property_id', propertyIds).eq('type', 'capital_expense'),
   ])
 
   // Build enriched property rows
@@ -60,11 +75,30 @@ export default async function PortfolioPage() {
 
     const latestVal = propValuations[0]?.amount ?? null
 
-    // Fall back to purchase cost when no formal valuation exists
     const purchaseCostFallback = (prop.purchase_price ?? 0) +
       (prop.property_type === 'house_and_land' ? (prop.construction_contract_amount ?? 0) : 0)
-    const displayVal = latestVal ?? (purchaseCostFallback > 0 ? purchaseCostFallback : null)
-    const isValFallback = latestVal === null && displayVal !== null
+    const isOtpPreCompletion = prop.property_type === 'off_the_plan' && prop.construction_status !== 'completed'
+    const isSold = prop.status === 'sold'
+    const propSaleCosts = (saleCosts ?? []).filter(c => c.property_id === prop.id) as PropertySaleCost[]
+    const propAcqCosts = (acquisitionCosts ?? []).filter(c => c.property_id === prop.id) as PropertyAcquisitionCost[]
+    const propDepr = (depreciation ?? []).filter(d => d.property_id === prop.id) as DepreciationSchedule[]
+    const propProgress = (progressPayments ?? []).filter(pp => pp.property_id === prop.id) as ConstructionProgressPayment[]
+    const propCapEx = (capExTxns ?? []).filter(t => t.property_id === prop.id) as Transaction[]
+    const totalSaleCosts = propSaleCosts.reduce((s, c) => s + c.amount, 0)
+    const netProceeds = (prop.sold_price ?? 0) - totalSaleCosts
+    const contractAmt = propProgress.reduce((s, pp) => s + (pp.amount ?? 0), 0)
+    const totalAcq = propAcqCosts.reduce((s, c) => s + c.amount, 0)
+    const totalCapEx = propCapEx.reduce((s, t) => s + Math.abs(t.amount), 0)
+    const totalDepr = propDepr.reduce((s, d) => s + (d.division_43_amount ?? 0) + (d.plant_equipment_amount ?? 0), 0)
+    const costBase = (prop.purchase_price ?? 0) + contractAmt + totalAcq + totalCapEx - totalDepr
+    const estimatedGain = isSold && prop.sold_price !== null ? netProceeds - costBase : null
+    const displayVal = isSold
+      ? estimatedGain  // show capital gain for sold properties
+      : isOtpPreCompletion
+        ? (prop.deposit_paid ?? null)
+        : (latestVal ?? (purchaseCostFallback > 0 ? purchaseCostFallback : null))
+    const isValFallback = !isSold && !isOtpPreCompletion && latestVal === null && displayVal !== null
+    const excludedFromTotal = false  // include all properties: sold at gain, OTP at deposit
 
     // Prefer actual_balance > formula
     const activeLoans = propLoans.filter(l => l.status === 'active')
@@ -85,12 +119,12 @@ export default async function PortfolioPage() {
     const equity = displayVal !== null ? displayVal - loanBalance : null
     const ltv = displayVal ? Math.round((loanBalance / displayVal) * 100) : null
 
-    return { ...prop, share_percentage: o.share_percentage, latest_valuation: displayVal, is_val_fallback: isValFallback, loan_balance: loanBalance, equity, ltv }
+    return { ...prop, share_percentage: o.share_percentage, latest_valuation: displayVal, is_val_fallback: isValFallback, loan_balance: loanBalance, equity, ltv, estimated_gain: estimatedGain, excluded_from_total: excludedFromTotal }
   })
 
-  // Portfolio totals
-  const totalValue = properties.reduce((s, p) => s + (p.latest_valuation ?? 0), 0)
-  const totalDebt = properties.reduce((s, p) => s + p.loan_balance, 0)
+  // Portfolio totals: include sold at sold_price; OTP pre-completion = nil (excluded)
+  const totalValue = properties.reduce((s, p) => p.excluded_from_total ? s : s + (p.latest_valuation ?? 0), 0)
+  const totalDebt = properties.reduce((s, p) => p.excluded_from_total ? s : s + p.loan_balance, 0)
   const totalEquity = totalValue - totalDebt
   const portfolioLTV = totalValue > 0 ? Math.round((totalDebt / totalValue) * 100) : 0
 
@@ -197,20 +231,35 @@ export default async function PortfolioPage() {
                     <div style={{ fontSize: 11, color: '#9ca3af' }}>{p.street_address}, {p.suburb} {p.state}</div>
                   </div>
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#5c6478', marginBottom: 4 }}>
-                      <span>LTV {p.ltv ?? '—'}%</span>
-                      <span>{p.ltv !== null ? `${100 - p.ltv}% equity` : '—'}</span>
-                    </div>
-                    <div style={{ height: 5, background: '#e4e7f0', borderRadius: 3, overflow: 'hidden' }}>
-                      <div style={{ width: `${p.ltv !== null ? 100 - p.ltv : 0}%`, height: '100%', background: '#f7c925', borderRadius: 3 }} />
-                    </div>
+                    {p.status !== 'sold' && (
+                      <>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: '#5c6478', marginBottom: 4 }}>
+                          <span>LTV {p.ltv ?? '—'}%</span>
+                          <span>{p.ltv !== null ? `${100 - p.ltv}% equity` : '—'}</span>
+                        </div>
+                        <div style={{
+                          height: 5, borderRadius: 3, overflow: 'hidden',
+                          background: p.ltv !== null
+                            ? `linear-gradient(to right, #2563a8 ${Math.min(100, p.ltv)}%, #f7c925 ${Math.min(100, p.ltv)}%)`
+                            : '#e4e7f0'
+                        }} />
+                      </>
+                    )}
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 14, fontWeight: 800, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
                       {p.latest_valuation ? formatCurrency(p.latest_valuation) : '—'}
                     </div>
-                    <div style={{ fontSize: 11, marginTop: 2, color: '#9ca3af' }}>
-                      {p.is_val_fallback ? 'Purchase cost (est.)' : p.share_percentage < 100 ? `${p.share_percentage}% share` : 'Full ownership'}
+                    <div style={{ fontSize: 11, marginTop: 2, color: p.estimated_gain !== null ? '#15803d' : p.status === 'sold' ? '#9ca3af' : p.is_val_fallback ? '#9ca3af' : '#9ca3af' }}>
+                      {p.status === 'sold'
+                        ? 'Est. capital gain'
+                        : p.property_type === 'off_the_plan' && p.construction_status !== 'completed'
+                          ? 'Deposit paid'
+                          : p.is_val_fallback
+                            ? 'Purchase cost (est.)'
+                            : p.share_percentage < 100
+                              ? `${p.share_percentage}% share`
+                              : 'Full ownership'}
                     </div>
                   </div>
                   <span style={{

@@ -1,5 +1,5 @@
 'use client'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import PortfolioView from './PortfolioView'
 import PropertyView from './PropertyView'
 import TaxView from './TaxView'
@@ -21,12 +21,33 @@ const TABS: { key: ReportType; label: string; desc: string }[] = [
 export default function ReportsPage({ properties, ownerName, generatedAt }: Props) {
   const [reportType, setReportType] = useState<ReportType>('portfolio')
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>(properties[0]?.property.id ?? '')
-  const [selectedFy, setSelectedFy] = useState<FyLabel>('FY25')
+  const [selectedFy, setSelectedFy] = useState<FyLabel>('FY26')
   const [pdfLoading, setPdfLoading] = useState(false)
 
   const selectedProperty = properties.find(p => p.property.id === selectedPropertyId) ?? properties[0]
   const showPropertySelector = reportType === 'property' || reportType === 'tax'
   const showFySelector = reportType === 'tax'
+
+  // Compute FYs relevant to the selected property (from acquisition to sold/current)
+  const relevantFyOptions = (() => {
+    const prop = selectedProperty?.property
+    if (!prop) return FY_OPTIONS
+    const startDate = prop.settlement_date ?? prop.purchase_date
+    const startFy = startDate
+      ? (() => { const [y, m] = startDate.split('-').map(Number); return `FY${String(m >= 7 ? y + 1 : y).slice(-2)}` })()
+      : null
+    const soldFy = prop.sold_date
+      ? (() => { const [y, m] = prop.sold_date.split('-').map(Number); return `FY${String(m >= 7 ? y + 1 : y).slice(-2)}` })()
+      : null
+    return FY_OPTIONS.filter(fy => (!startFy || fy >= startFy) && (!soldFy || fy <= soldFy))
+  })()
+
+  // Auto-correct selectedFy if it falls outside the relevant range for the selected property
+  useEffect(() => {
+    if (relevantFyOptions.length && !relevantFyOptions.includes(selectedFy)) {
+      setSelectedFy(relevantFyOptions[relevantFyOptions.length - 1])
+    }
+  }, [relevantFyOptions]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleExportPdf = useCallback(async () => {
     setPdfLoading(true)
@@ -98,31 +119,45 @@ export default function ReportsPage({ properties, ownerName, generatedAt }: Prop
           <div style={{ width: 1, height: 28, background: '#e4e7f0' }} />
         )}
 
-        {showFySelector && (
+        {showPropertySelector && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.08em' }}>Year</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.08em' }}>Property</span>
             <select
-              value={selectedFy}
-              onChange={e => setSelectedFy(e.target.value as FyLabel)}
-              style={{ padding: '6px 10px', border: '1px solid #e4e7f0', borderRadius: 7, fontSize: 13, fontWeight: 700, color: '#1a1a2e', background: '#f9fafb', cursor: 'pointer', outline: 'none' }}
+              value={selectedPropertyId}
+              onChange={e => {
+                const newId = e.target.value
+                setSelectedPropertyId(newId)
+                const newProp = properties.find(p => p.property.id === newId)
+                if (newProp) {
+                  const startDate = newProp.property.settlement_date ?? newProp.property.purchase_date
+                  const startFy = startDate
+                    ? (() => { const [y, m] = startDate.split('-').map(Number); return `FY${String(m >= 7 ? y + 1 : y).slice(-2)}` })()
+                    : null
+                  const soldFy = newProp.property.sold_date
+                    ? (() => { const [y, m] = newProp.property.sold_date!.split('-').map(Number); return `FY${String(m >= 7 ? y + 1 : y).slice(-2)}` })()
+                    : null
+                  const valid = FY_OPTIONS.filter(fy => (!startFy || fy >= startFy) && (!soldFy || fy <= soldFy))
+                  if (valid.length && !valid.includes(selectedFy)) setSelectedFy(valid[valid.length - 1])
+                }
+              }}
+              style={{ padding: '6px 10px', border: '1px solid #e4e7f0', borderRadius: 7, fontSize: 13, fontWeight: 700, color: '#1a1a2e', background: '#f9fafb', cursor: 'pointer', outline: 'none', maxWidth: 240 }}
             >
-              {FY_OPTIONS.map(fy => <option key={fy} value={fy}>{fy}</option>)}
+              {properties.map(p => <option key={p.property.id} value={p.property.id}>{p.property.name}</option>)}
             </select>
           </div>
         )}
 
-
-        {showPropertySelector && (
+        {showFySelector && (
           <>
-            {showFySelector && <div style={{ width: 1, height: 28, background: '#e4e7f0' }} />}
+            <div style={{ width: 1, height: 28, background: '#e4e7f0' }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.08em' }}>Property</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.08em' }}>Year</span>
               <select
-                value={selectedPropertyId}
-                onChange={e => setSelectedPropertyId(e.target.value)}
-                style={{ padding: '6px 10px', border: '1px solid #e4e7f0', borderRadius: 7, fontSize: 13, fontWeight: 700, color: '#1a1a2e', background: '#f9fafb', cursor: 'pointer', outline: 'none', maxWidth: 240 }}
+                value={selectedFy}
+                onChange={e => setSelectedFy(e.target.value as FyLabel)}
+                style={{ padding: '6px 10px', border: '1px solid #e4e7f0', borderRadius: 7, fontSize: 13, fontWeight: 700, color: '#1a1a2e', background: '#f9fafb', cursor: 'pointer', outline: 'none' }}
               >
-                {properties.map(p => <option key={p.property.id} value={p.property.id}>{p.property.name}</option>)}
+                {relevantFyOptions.map(fy => <option key={fy} value={fy}>{fy}</option>)}
               </select>
             </div>
           </>

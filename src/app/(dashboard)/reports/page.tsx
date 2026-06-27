@@ -1,8 +1,31 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { calculateLoanBalance, getIOExpiryDate } from '@/lib/utils/finance'
-import type { Property, Loan, Transaction, Valuation, DepreciationSchedule, PropertyAcquisitionCost, LoanSecurity, ConstructionProgressPayment } from '@/lib/types/database'
+import type { Property, Loan, Transaction, Valuation, DepreciationSchedule, PropertyAcquisitionCost, PropertySaleCost, LoanSecurity, ConstructionProgressPayment } from '@/lib/types/database'
 import ReportsPage from '@/components/reports/ReportsPage'
+
+// PostgREST max-rows caps at 1000 regardless of .limit(). Paginate to get all rows.
+async function fetchAllTransactions(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  propertyIds: string[]
+): Promise<Transaction[]> {
+  const PAGE = 1000
+  const all: Transaction[] = []
+  let page = 0
+  while (true) {
+    const { data } = await supabase
+      .from('transactions')
+      .select('*')
+      .in('property_id', propertyIds)
+      .order('transaction_date', { ascending: true })
+      .range(page * PAGE, (page + 1) * PAGE - 1)
+    if (!data || data.length === 0) break
+    all.push(...(data as Transaction[]))
+    if (data.length < PAGE) break
+    page++
+  }
+  return all
+}
 
 export default async function Reports() {
   const supabase = await createClient()
@@ -32,18 +55,19 @@ export default async function Reports() {
   const [
     { data: valuations },
     { data: loans },
-    { data: transactions },
+    transactions,
     { data: depreciation },
     { data: acquisitionCosts },
     { data: progressPayments },
+    { data: saleCosts },
   ] = await Promise.all([
     supabase.from('valuations').select('*').in('property_id', propertyIds).order('valuation_date', { ascending: false }),
     supabase.from('loans').select('*').in('tax_property_id', propertyIds),
-    // Fetch from FY20 start to capture up to 7 years of history for charts
-    supabase.from('transactions').select('*').in('property_id', propertyIds).gte('transaction_date', '2019-07-01').order('transaction_date', { ascending: true }).limit(10000),
+    fetchAllTransactions(supabase, propertyIds),
     supabase.from('depreciation_schedules').select('*').in('property_id', propertyIds),
     supabase.from('property_acquisition_costs').select('*').in('property_id', propertyIds),
     supabase.from('construction_progress_payments').select('*').in('property_id', propertyIds).order('sort_order', { ascending: true }),
+    supabase.from('property_sale_costs').select('*').in('property_id', propertyIds),
   ])
 
   // Fetch loan securities for all loans
@@ -67,7 +91,12 @@ export default async function Reports() {
     const latestValuation = propValuations[0]?.amount ?? null
     const purchaseCostFallback = (prop.purchase_price ?? 0) +
       (prop.property_type === 'house_and_land' ? (prop.construction_contract_amount ?? 0) : 0)
-    const displayVal = latestValuation ?? (purchaseCostFallback > 0 ? purchaseCostFallback : null)
+    // Sold: use sold_price; OTP pre-completion: use deposit_paid (nil if not set)
+    const displayVal = prop.status === 'sold'
+      ? (prop.sold_price ?? latestValuation ?? (purchaseCostFallback > 0 ? purchaseCostFallback : null))
+      : prop.property_type === 'off_the_plan' && prop.construction_status !== 'completed'
+        ? (prop.deposit_paid ?? null)
+        : (latestValuation ?? (purchaseCostFallback > 0 ? purchaseCostFallback : null))
 
     const activeLoans = propLoans.filter(l => l.status === 'active').map(l => {
       const currentBalance = l.actual_balance !== null && l.actual_balance !== undefined
@@ -100,10 +129,11 @@ export default async function Reports() {
       latestValuation: displayVal,
       isValFallback: latestValuation === null && displayVal !== null,
       activeLoans,
-      allTransactions: ((transactions ?? []).filter(t => t.property_id === prop.id) as Transaction[]),
+      allTransactions: transactions.filter(t => t.property_id === prop.id) as Transaction[],
       depreciation: ((depreciation ?? []).filter(d => d.property_id === prop.id) as DepreciationSchedule[]),
       allValuations: propValuations,
       acquisitionCosts: ((acquisitionCosts ?? []).filter(c => c.property_id === prop.id) as PropertyAcquisitionCost[]),
+      saleCosts: ((saleCosts ?? []).filter(c => c.property_id === prop.id) as PropertySaleCost[]),
       progressPayments: ((progressPayments ?? []).filter(pp => pp.property_id === prop.id) as ConstructionProgressPayment[]),
       loans: propLoans,
     }

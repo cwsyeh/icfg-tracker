@@ -924,7 +924,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
 
   // ── Overview edit modals ──
   const [editingDetails, setEditingDetails] = useState(false)
-  const [detailsForm, setDetailsForm] = useState({ name: '', street_address: '', suburb: '', state: '', postcode: '', usage: '', mixed_use_investment_percent: '', purchase_date: '', settlement_date: '', purchase_price: '' })
+  const [detailsForm, setDetailsForm] = useState({ name: '', street_address: '', suburb: '', state: '', postcode: '', usage: '', mixed_use_investment_percent: '', purchase_date: '', settlement_date: '', purchase_price: '', deposit_paid: '' })
   type AcqRow = { type: AcquisitionCostType; amount: string; description: string }
   const [acqForm, setAcqForm] = useState<AcqRow[]>([])
   const [editingAcqCosts, setEditingAcqCosts] = useState(false)
@@ -3331,7 +3331,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                     }}>
                       {property.status === 'active' ? 'Active' : property.status === 'sold' ? 'Sold' : 'Archived'}
                     </span>
-                    <button onClick={() => { setDetailsForm({ name: property.name ?? '', street_address: property.street_address ?? '', suburb: property.suburb ?? '', state: property.state ?? '', postcode: property.postcode ?? '', usage: property.usage ?? 'investment', mixed_use_investment_percent: property.mixed_use_investment_percent != null ? String(property.mixed_use_investment_percent) : '', purchase_date: property.purchase_date ?? '', settlement_date: property.settlement_date ?? '', purchase_price: property.purchase_price != null ? String(property.purchase_price) : '' }); setAcqForm(acquisitionCosts.map(c => ({ type: c.type, amount: String(c.amount), description: c.description ?? '' }))); setOverviewError(null); setEditingDetails(true) }}
+                    <button onClick={() => { setDetailsForm({ name: property.name ?? '', street_address: property.street_address ?? '', suburb: property.suburb ?? '', state: property.state ?? '', postcode: property.postcode ?? '', usage: property.usage ?? 'investment', mixed_use_investment_percent: property.mixed_use_investment_percent != null ? String(property.mixed_use_investment_percent) : '', purchase_date: property.purchase_date ?? '', settlement_date: property.settlement_date ?? '', purchase_price: property.purchase_price != null ? String(property.purchase_price) : '', deposit_paid: property.deposit_paid != null ? String(property.deposit_paid) : '' }); setAcqForm(acquisitionCosts.map(c => ({ type: c.type, amount: String(c.amount), description: c.description ?? '' }))); setOverviewError(null); setEditingDetails(true) }}
                       style={{ padding: '5px 12px', background: BLUE, color: '#fff', border: 'none', borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>Edit</button>
                   </div>
                 </div>
@@ -6719,6 +6719,12 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                     <label style={lbl}>Purchase price</label>
                     <input type="number" step="1000" value={f.purchase_price} onChange={e => setDetailsForm(x => ({ ...x, purchase_price: e.target.value }))} style={{ ...s, ...(isReadOnly ? { background: '#f9fafb', color: '#9ca3af' } : {}) }} placeholder="e.g. 750000" disabled={isReadOnly} />
                   </div>
+                  {property.property_type === 'off_the_plan' && (
+                    <div>
+                      <label style={lbl}>Deposit paid</label>
+                      <input type="number" step="1000" value={f.deposit_paid} onChange={e => setDetailsForm(x => ({ ...x, deposit_paid: e.target.value }))} style={{ ...s, ...(isReadOnly ? { background: '#f9fafb', color: '#9ca3af' } : {}) }} placeholder="e.g. 50000" disabled={isReadOnly} />
+                    </div>
+                  )}
                 </div>
                 {/* Acquisition costs section */}
                 <div style={{ borderTop: '1px solid #f0f2f7', paddingTop: 16, marginTop: 4 }}>
@@ -6827,7 +6833,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                       await fetch('/api/properties/acquisition-costs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ propertyId: property.id, costs: validCosts }) })
                       const newCosts = validCosts.map(c => ({ ...c, id: '', property_id: property.id, date: null, created_at: '' }) as PropertyAcquisitionCost)
                       setAcquisitionCosts(newCosts)
-                      saveOverview({ name: f.name.trim() || undefined, street_address: f.street_address, suburb: f.suburb, state: f.state, postcode: f.postcode, usage: f.usage, mixed_use_investment_percent: f.usage === 'mixed' && f.mixed_use_investment_percent ? parseFloat(f.mixed_use_investment_percent) : null, purchase_date: f.purchase_date || null, settlement_date: f.settlement_date || null, purchase_price: f.purchase_price ? parseFloat(f.purchase_price) : null })
+                      saveOverview({ name: f.name.trim() || undefined, street_address: f.street_address, suburb: f.suburb, state: f.state, postcode: f.postcode, usage: f.usage, mixed_use_investment_percent: f.usage === 'mixed' && f.mixed_use_investment_percent ? parseFloat(f.mixed_use_investment_percent) : null, purchase_date: f.purchase_date || null, settlement_date: f.settlement_date || null, purchase_price: f.purchase_price ? parseFloat(f.purchase_price) : null, ...(property.property_type === 'off_the_plan' ? { deposit_paid: f.deposit_paid ? parseFloat(f.deposit_paid) : null } : {}) })
                     }}
                     disabled={overviewSaving} style={{ padding: '9px 18px', background: BLUE, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                     {overviewSaving ? 'Saving…' : 'Save'}

@@ -15,11 +15,25 @@ function compactTick(v: number) {
   return `$${v}`
 }
 
-function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number; color: string }[]; label?: string }) {
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+function formatDateLabel(label: string | undefined, isAnnual?: boolean): string {
+  if (!label) return ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(label)) {
+    const [y, m, d] = label.split('-').map(Number)
+    const fyStr = `FY${String(m >= 7 ? y + 1 : y).slice(-2)}`
+    return isAnnual ? `${fyStr} (30 Jun ${y})` : `${d} ${MONTHS[m - 1]} ${y}`
+  }
+  return label
+}
+
+function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number; color: string; payload?: Record<string, unknown> }[]; label?: string }) {
   if (!active || !payload?.length) return null
+  const isAnnual = !!(payload[0]?.payload as Record<string, unknown> | undefined)?.isAnnual
+  const displayLabel = formatDateLabel(label, isAnnual)
   return (
     <div style={{ background: '#fff', border: '1px solid #e4e7f0', borderRadius: 8, padding: '10px 14px', boxShadow: '0 4px 16px rgba(0,0,0,.08)', fontSize: 12 }}>
-      <div style={{ fontWeight: 800, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontWeight: 800, marginBottom: 6 }}>{displayLabel}</div>
       {payload.map(p => (
         <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 3 }}>
           <span style={{ color: p.color }}>{p.name}</span>
@@ -55,21 +69,20 @@ export default function PropertyView({ property: p }: Props) {
     const soldFy = soldDate
       ? (() => { const [y, m] = soldDate.split('-').map(Number); return `FY${String(m >= 7 ? y + 1 : y).slice(-2)}` })()
       : null
-    const soldFyIdx = soldFy ? FY_CHART_RANGE.indexOf(soldFy as typeof FY_CHART_RANGE[number]) : -1
-
     const startDate = p.property.settlement_date ?? p.property.purchase_date
     const purchaseFy = startDate
       ? (() => { const [y, m] = startDate.split('-').map(Number); return `FY${String(m >= 7 ? y + 1 : y).slice(-2)}` })()
       : null
-    const purchaseFyIdx = purchaseFy ? FY_CHART_RANGE.indexOf(purchaseFy as typeof FY_CHART_RANGE[number]) : -1
 
-    const chartFYs = soldFy && soldFyIdx >= 0
-      ? FY_CHART_RANGE.slice(purchaseFyIdx >= 0 ? purchaseFyIdx : 0, soldFyIdx + 1)
-      : FY_CHART_RANGE.slice(Math.max(0, FY_CHART_RANGE.length - 10))
+    const currentFy = FY_CHART_RANGE[FY_CHART_RANGE.length - 1]
+    const endFyStr = soldFy ?? currentFy
+    const startYr = purchaseFy ? 2000 + parseInt(purchaseFy.slice(2)) : 2000 + parseInt(FY_CHART_RANGE[0].slice(2))
+    const endYr = 2000 + parseInt(endFyStr.slice(2))
+    const chartFYs: string[] = Array.from({ length: endYr - startYr + 1 }, (_, i) => `FY${String(startYr + i).slice(-2)}`)
 
     const chartData = chartFYs.map(fy => {
       const isSalePoint = soldDate && soldPrice && fy === soldFy
-      const endDate = isSalePoint ? soldDate : fyEndDate(fy)
+      const endDate = isSalePoint ? soldDate : fyEndDate(fy as typeof FY_CHART_RANGE[number])
       const propVal = isSalePoint
         ? soldPrice
         : (() => {
@@ -81,7 +94,7 @@ export default function PropertyView({ property: p }: Props) {
             if (prop.property_type === 'off_the_plan') {
               return settledByEnd ? (prop.purchase_price ?? 0) || null : (prop.deposit_paid ?? 0) || null
             }
-            if (prop.property_type === 'house_and_land') {
+            if (prop.property_type === 'house_and_land' || p.progressPayments.length > 0) {
               const landPrice = prop.purchase_price ?? 0
               const drawn = p.progressPayments
                 .filter(pp => pp.drawn_date && pp.drawn_date <= endDate)
@@ -123,7 +136,101 @@ export default function PropertyView({ property: p }: Props) {
       }
     }).filter(Boolean) as { fy: string; Value?: number; Equity?: number; Debt?: number; cashNet: number | null; nonCash: number | null; netResult: number | null; grossYield?: number }[]
 
-    return { val, debt, equity, ltv, grossRent, grossYield, netYield, netResult, latestFy, chartData, soldFy, purchaseFy }
+    const isSold = p.property.status === 'sold'
+    const totalSaleCosts = (p.saleCosts ?? []).reduce((s, c) => s + c.amount, 0)
+    const netProceeds = (p.property.sold_price ?? 0) - totalSaleCosts
+    const contractAmt = p.progressPayments.reduce((s, pp) => s + (pp.amount ?? 0), 0)
+    const totalAcq = p.acquisitionCosts.reduce((s, c) => s + c.amount, 0)
+    const totalCapEx = p.allTransactions.filter(t => t.type === 'capital_expense').reduce((s, t) => s + Math.abs(t.amount), 0)
+    const totalDepr = p.depreciation.reduce((s, d) => s + (d.division_43_amount ?? 0) + (d.plant_equipment_amount ?? 0), 0)
+    const costBasis = (p.property.purchase_price ?? 0) + contractAmt + totalAcq + totalCapEx - totalDepr
+    const estimatedGain = isSold && p.property.sold_price !== null ? netProceeds - costBasis : null
+
+    // Capital Growth chart: combine all valuation dates with annual FY-end markers
+    const fyEndDateSet = new Set<string>()
+    chartFYs.forEach(fy => {
+      const isSaleFy = soldDate && soldPrice && fy === soldFy
+      fyEndDateSet.add(isSaleFy ? soldDate! : fyEndDate(fy as typeof FY_CHART_RANGE[number]))
+    })
+
+    const growthDates = new Set<string>(fyEndDateSet)
+    p.allValuations.forEach(v => {
+      if ((!startDate || v.valuation_date >= startDate) && (!soldDate || v.valuation_date <= soldDate)) {
+        growthDates.add(v.valuation_date)
+      }
+    })
+
+    const growthChartData = [...growthDates].sort().map(date => {
+      const isSalePoint = !!(soldDate && soldPrice && date === soldDate)
+      const propVal = isSalePoint
+        ? soldPrice!
+        : (() => {
+            const fv = valuationAsOf(p.allValuations, date, null)
+            if (fv !== null) return fv
+            const prop = p.property
+            if (!prop.purchase_date || prop.purchase_date > date) return null
+            const settledByEnd = prop.settlement_date ? prop.settlement_date <= date : true
+            if (prop.property_type === 'off_the_plan') {
+              return settledByEnd ? (prop.purchase_price ?? 0) || null : (prop.deposit_paid ?? 0) || null
+            }
+            if (prop.property_type === 'house_and_land' || p.progressPayments.length > 0) {
+              const landPrice = prop.purchase_price ?? 0
+              const drawn = p.progressPayments
+                .filter(pp => pp.drawn_date && pp.drawn_date <= date)
+                .reduce((s, pp) => s + ((pp.bank_amount !== null || pp.self_amount !== null)
+                  ? (pp.bank_amount ?? 0) + (pp.self_amount ?? 0)
+                  : (pp.amount ?? 0)), 0)
+              return (landPrice + drawn) || null
+            }
+            return (prop.purchase_price ?? 0) || null
+          })()
+      if (propVal === null) return null
+      const propDebt = p.loans.reduce((ls, loan) => {
+        if (loan.start_date > date) return ls
+        if (loan.closed_date && loan.closed_date <= date) return ls
+        return ls + calculateLoanBalance({
+          originalAmount: loan.original_amount, annualRate: loan.interest_rate, termYears: loan.loan_term_years,
+          startDate: loan.start_date, repaymentType: loan.repayment_type,
+          ioPeriodYears: loan.io_period_years ?? 0, ioExpiryDate: loan.io_expiry_date, asOfDate: date,
+        })
+      }, 0)
+      return {
+        date,
+        isAnnual: fyEndDateSet.has(date),
+        Value: propVal,
+        Equity: propVal - propDebt,
+        Debt: propDebt > 0 ? propDebt : undefined,
+      }
+    }).filter(Boolean) as { date: string; isAnnual: boolean; Value: number; Equity: number; Debt?: number }[]
+
+    const annualTicks = [...fyEndDateSet].sort()
+
+    // Sold property summary metrics for hero card
+    const totalGrossRent = p.allTransactions.filter(t => t.type === 'rent_income').reduce((s, t) => s + t.amount, 0)
+    const totalCashExp = p.allTransactions.filter(t => t.amount < 0 && t.type !== 'principal_payment').reduce((s, t) => s + Math.abs(t.amount), 0)
+    const totalRentalIncome = totalGrossRent - totalCashExp
+    const ownershipDays = (() => {
+      const from = startDate
+      const to = soldDate
+      if (!from || !to) return null
+      return Math.round((new Date(to).getTime() - new Date(from).getTime()) / (1000 * 60 * 60 * 24))
+    })()
+    const ownershipYears = ownershipDays !== null ? ownershipDays / 365.25 : null
+    const annualGrowthRate = isSold && p.property.sold_price && costBasis > 0 && ownershipYears && ownershipYears > 0
+      ? (Math.pow(p.property.sold_price / costBasis, 1 / ownershipYears) - 1) * 100
+      : null
+
+    const isPpor = p.property.usage === 'ppor'
+    const activeDays = !isSold && startDate
+      ? Math.round((Date.now() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24))
+      : null
+    const activeYears = activeDays && activeDays > 0 ? activeDays / 365.25 : null
+    const activeEstGain = !isSold && val > 0 && costBasis > 0 ? val - costBasis : null
+    const activeGrowthRate = !isSold && val > 0 && costBasis > 0 && activeYears && activeYears > 0
+      ? (Math.pow(val / costBasis, 1 / activeYears) - 1) * 100
+      : null
+
+    return { val, debt, equity, ltv, grossRent, grossYield, netYield, netResult, latestFy, chartData, growthChartData, annualTicks, soldFy, purchaseFy, isSold, estimatedGain, totalRentalIncome, annualGrowthRate, costBasis, ownershipDays, isPpor, activeEstGain, activeGrowthRate, contractAmt, totalAcq, totalCapEx, totalDepr }
   }, [p])
 
   const prop = p.property
@@ -145,16 +252,28 @@ export default function PropertyView({ property: p }: Props) {
             </span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 1, paddingTop: 20, borderTop: '1px solid rgba(255,255,255,.1)' }}>
-            {[
+            {(data.isSold ? [
+              { label: 'Sold Price', value: prop.sold_price ? formatCompact(prop.sold_price) : '—', sub: prop.sold_date ? `Settled ${prop.sold_date}` : 'Settlement date unknown' },
+              { label: 'Cost Basis', value: data.costBasis > 0 ? formatCompact(data.costBasis) : '—', sub: 'Purchase + construction' },
+              { label: 'Est. Capital Gain', value: data.estimatedGain !== null ? formatCompact(data.estimatedGain) : '—', sub: 'Sold price − cost basis', pos: data.estimatedGain !== null && data.estimatedGain > 0 },
+              { label: 'Avg. Capital Growth', value: data.annualGrowthRate !== null ? `${data.annualGrowthRate.toFixed(1)}% p.a.` : '—', sub: 'Compounded annual return' },
+              (() => { const fmt = (n: number) => n < 0 ? `(${formatCompact(Math.abs(n))})` : formatCompact(n); const pa = data.ownershipDays && data.ownershipDays > 0 ? Math.round(data.totalRentalIncome / data.ownershipDays * 365) : null; return { label: 'Net Rental Result', value: data.totalRentalIncome !== 0 ? `${fmt(data.totalRentalIncome)}${pa !== null ? ` / ${fmt(pa)} p.a.` : ''}` : '—', sub: 'Income minus expenses', neg: data.totalRentalIncome < 0 } })()
+            ] : data.isPpor ? [
+              { label: 'Current Value', value: data.val > 0 ? formatCompact(data.val) : '—', sub: p.isValFallback ? 'Purchase cost (est.)' : 'Latest valuation' },
+              { label: 'Loan Balance', value: data.debt > 0 ? formatCompact(data.debt) : '—', sub: `${p.activeLoans.length} loan${p.activeLoans.length !== 1 ? 's' : ''}` },
+              { label: 'Equity', value: data.val > 0 ? formatCompact(Math.abs(data.equity)) : '—', sub: data.equity < 0 ? 'Negative equity' : `LTV ${data.ltv !== null ? data.ltv.toFixed(0) : '—'}%`, neg: data.equity < 0 },
+              { label: 'Est. Capital Gain', value: data.activeEstGain !== null ? formatCompact(data.activeEstGain) : '—', sub: 'Current value − cost basis', pos: data.activeEstGain !== null && data.activeEstGain > 0 },
+              { label: 'Growth p.a.', value: data.activeGrowthRate !== null ? `${data.activeGrowthRate.toFixed(1)}% p.a.` : '—', sub: 'Compounded annual return' },
+            ] : [
               { label: 'Current Value', value: data.val > 0 ? formatCompact(data.val) : '—', sub: p.isValFallback ? 'Purchase cost (est.)' : 'Latest valuation' },
               { label: 'Loan Balance', value: data.debt > 0 ? formatCompact(data.debt) : '—', sub: `${p.activeLoans.length} loan${p.activeLoans.length !== 1 ? 's' : ''}` },
               { label: 'Equity', value: data.val > 0 ? formatCompact(Math.abs(data.equity)) : '—', sub: data.equity < 0 ? 'Negative equity' : `LTV ${data.ltv !== null ? data.ltv.toFixed(0) : '—'}%`, neg: data.equity < 0 },
               { label: `${data.latestFy} Gross Yield`, value: data.grossYield !== null ? `${data.grossYield.toFixed(1)}%` : '—', sub: `${data.latestFy} gross rent` },
               { label: `${data.latestFy} Net Yield`, value: data.netYield !== null ? `${data.netYield >= 0 ? '+' : ''}${data.netYield.toFixed(1)}%` : '—', sub: 'After all deductions', neg: data.netYield !== null && data.netYield < 0 },
-            ].map((k, i) => (
+            ]).map((k, i) => (
               <div key={k.label} style={{ paddingRight: i < 4 ? 20 : 0 }}>
                 <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.13em', textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', marginBottom: 8 }}>{k.label}</div>
-                <div style={{ fontSize: 20, fontWeight: 900, lineHeight: 1, color: k.neg ? '#fca5a5' : '#fff', fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
+                <div style={{ fontSize: 20, fontWeight: 900, lineHeight: 1, color: k.neg ? '#fca5a5' : (k as {pos?: boolean}).pos ? '#86efac' : '#fff', fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
                 {k.sub && <div style={{ fontSize: 10, color: 'rgba(255,255,255,.3)', marginTop: 5 }}>{k.sub}</div>}
               </div>
             ))}
@@ -168,7 +287,7 @@ export default function PropertyView({ property: p }: Props) {
           <div style={CARD}>
             <div style={{ padding: '16px 22px 4px' }}>
               <div style={{ fontSize: 14, fontWeight: 800 }}>Capital Growth</div>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>{data.soldFy ? `Full ownership period${data.purchaseFy ? ` · ${data.purchaseFy}–${data.soldFy}` : ''} (sold)` : 'Property value, debt and equity over 10 years'}</div>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>{data.soldFy ? `Full ownership period${data.purchaseFy ? ` · ${data.purchaseFy}–${data.soldFy}` : ''} (sold)` : data.purchaseFy ? `Property value, debt and equity · from ${data.purchaseFy}` : 'Property value, debt and equity'}</div>
             </div>
             <div style={{ padding: '8px 22px 20px' }}>
               <ResponsiveContainer width="100%" height={200}>
@@ -193,38 +312,72 @@ export default function PropertyView({ property: p }: Props) {
             </div>
           </div>
 
-          <div style={CARD}>
-            <div style={{ padding: '16px 22px 4px' }}>
-              <div style={{ fontSize: 14, fontWeight: 800 }}>Net Rental Result</div>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>Annual result after all expenses</div>
+          {data.isPpor ? (
+            <div style={CARD}>
+              <div style={{ padding: '16px 22px 12px', borderBottom: '1px solid #e4e7f0' }}>
+                <div style={{ fontSize: 14, fontWeight: 800 }}>Est. Capital Gain</div>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>Current value minus adjusted cost basis</div>
+              </div>
+              <div style={{ padding: '16px 22px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {(() => {
+                  const row = (label: string, value: string, color?: string, bold?: boolean, topBorder?: boolean) => (
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, paddingTop: topBorder ? 8 : 0, borderTop: topBorder ? '1px solid #e4e7f0' : undefined, marginTop: topBorder ? 4 : 0 }}>
+                      <span style={{ color: '#5c6478' }}>{label}</span>
+                      <span style={{ color: color ?? '#1a1e2e', fontWeight: bold ? 800 : 500, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+                    </div>
+                  )
+                  const fmt = (n: number) => n < 0 ? `(${formatCurrency(Math.abs(n))})` : formatCurrency(n)
+                  const gain = data.activeEstGain
+                  return (
+                    <>
+                      {row('Current value', data.val > 0 ? formatCurrency(data.val) : '—', '#1a1e2e', true)}
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.07em', marginTop: 6, marginBottom: 2 }}>Cost basis</div>
+                      {(p.property.purchase_price ?? 0) > 0 && row('Purchase price', formatCurrency(p.property.purchase_price ?? 0))}
+                      {data.contractAmt > 0 && row('Construction contract', formatCurrency(data.contractAmt))}
+                      {data.totalAcq > 0 && row('Acquisition costs', formatCurrency(data.totalAcq))}
+                      {data.totalCapEx > 0 && row('Capital expenses', formatCurrency(data.totalCapEx))}
+                      {data.totalDepr > 0 && row('Less depreciation', `(${formatCurrency(data.totalDepr)})`, '#b91c1c')}
+                      {row('Cost basis total', formatCurrency(data.costBasis), '#374151', true, true)}
+                      {row('Est. capital gain', gain !== null ? fmt(gain) : '—', gain !== null && gain >= 0 ? '#15803d' : '#b91c1c', true, true)}
+                    </>
+                  )
+                })()}
+              </div>
             </div>
-            <div style={{ padding: '8px 22px 20px' }}>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={data.chartData.filter(d => d.netResult !== null)} margin={{ top: 8, right: 8, left: 8, bottom: 0 }} maxBarSize={20}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f7" vertical={false} />
-                  <XAxis dataKey="fy" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                  <YAxis tickFormatter={compactTick} tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={60} />
-                  <Tooltip content={<ChartTooltip />} />
-                  <ReferenceLine y={0} stroke="#e4e7f0" strokeWidth={1.5} />
-                  <Bar dataKey="cashNet" name="Cash Result" stackId="r" isAnimationActive={false} fill="#0c1929" />
-                  <Bar dataKey="nonCash" name="Non-Cash (Dep.)" stackId="r" isAnimationActive={false} fill="rgba(12,25,41,0.22)" radius={[0, 0, 2, 2]} />
-                </BarChart>
-              </ResponsiveContainer>
-              <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 6 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6b7280' }}>
-                  <div style={{ width: 10, height: 10, background: '#0c1929', borderRadius: 2 }} />Cash
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6b7280' }}>
-                  <div style={{ width: 10, height: 10, background: 'rgba(12,25,41,0.22)', border: '1px solid rgba(12,25,41,0.3)', borderRadius: 2 }} />Non-cash (dep.)
+          ) : (
+            <div style={CARD}>
+              <div style={{ padding: '16px 22px 4px' }}>
+                <div style={{ fontSize: 14, fontWeight: 800 }}>Net Rental Result</div>
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>Annual result after all expenses</div>
+              </div>
+              <div style={{ padding: '8px 22px 20px' }}>
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={data.chartData.filter(d => d.netResult !== null)} margin={{ top: 8, right: 8, left: 8, bottom: 0 }} maxBarSize={20}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f7" vertical={false} />
+                    <XAxis dataKey="fy" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                    <YAxis tickFormatter={compactTick} tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={60} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <ReferenceLine y={0} stroke="#e4e7f0" strokeWidth={1.5} />
+                    <Bar dataKey="cashNet" name="Cash Result" stackId="r" isAnimationActive={false} fill="#0c1929" />
+                    <Bar dataKey="nonCash" name="Non-Cash (Dep.)" stackId="r" isAnimationActive={false} fill="rgba(12,25,41,0.22)" radius={[0, 0, 2, 2]} />
+                  </BarChart>
+                </ResponsiveContainer>
+                <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6b7280' }}>
+                    <div style={{ width: 10, height: 10, background: '#0c1929', borderRadius: 2 }} />Cash
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6b7280' }}>
+                    <div style={{ width: 10, height: 10, background: 'rgba(12,25,41,0.22)', border: '1px solid rgba(12,25,41,0.3)', borderRadius: 2 }} />Non-cash (dep.)
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
-      {/* Cashflow summary table — latest FY */}
-      <div style={CARD}>
+      {/* Cashflow summary table — latest FY (investment only) */}
+      {!data.isPpor && !data.isSold && <div style={CARD}>
         <div style={{ padding: '16px 22px 12px', borderBottom: '1px solid #e4e7f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ fontSize: 14, fontWeight: 800 }}>{data.latestFy} Cashflow Summary</div>
           <div style={{ fontSize: 12, color: '#9ca3af' }}>For detailed ATO breakdown, use the Tax report</div>
@@ -242,7 +395,7 @@ export default function PropertyView({ property: p }: Props) {
             </div>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* Loan details */}
       {p.activeLoans.length > 0 && (
