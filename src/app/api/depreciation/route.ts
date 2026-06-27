@@ -58,7 +58,7 @@ export async function DELETE(request: NextRequest) {
 
     const { data: ownership } = await supabase
       .from('property_owners')
-      .select('id')
+      .select('id, role')
       .eq('property_id', schedule.property_id)
       .eq('user_id', user.id)
       .single()

@@ -37,13 +37,13 @@ export async function POST(request: NextRequest) {
 
   // Verify user owns the linked property
   const { data: ownership } = await adminSupabase
-    .from('property_owners').select('id').eq('property_id', propertyId).eq('user_id', user.id).single()
+    .from('property_owners').select('id, role').eq('property_id', propertyId).eq('user_id', user.id).single()
   if (!ownership) return NextResponse.json({ error: 'Access denied' }, { status: 404 })
   if (ownership.role === 'viewer') return NextResponse.json({ error: 'View-only access' }, { status: 403 })
 
   // Verify loan belongs to this property
   const { data: loan } = await adminSupabase
-    .from('loans').select('id').eq('id', loanId).eq('tax_property_id', propertyId).single()
+    .from('loans').select('id, role').eq('id', loanId).eq('tax_property_id', propertyId).single()
   if (!loan) return NextResponse.json({ error: 'Loan not found' }, { status: 404 })
 
   // Replace loan_securities: delete existing, insert new

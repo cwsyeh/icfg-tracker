@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
   if (loan_id) {
     const { data: loan } = await adminSupabase
       .from('loans')
-      .select('id')
+      .select('id, role')
       .eq('id', loan_id)
       .eq('tax_property_id', propertyId)
       .single()

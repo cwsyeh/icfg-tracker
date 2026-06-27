@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
   const { data: newLoan, error } = await adminSupabase
     .from('loans')
     .insert(safe)
-    .select('id')
+    .select('id, role')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
