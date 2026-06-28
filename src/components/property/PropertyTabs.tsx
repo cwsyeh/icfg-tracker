@@ -959,6 +959,43 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
   const [photoUrl, setPhotoUrl] = useState<string | null>(property.photo_url ?? null)
   const photoInputRef = useRef<HTMLInputElement>(null)
 
+  // ── Standard stages modal ──
+  const [showStdStagesModal, setShowStdStagesModal] = useState(false)
+  const [stdStagesForm, setStdStagesForm] = useState<{ name: string; pct: string }[]>([])
+  const [stdStagesSaving, setStdStagesSaving] = useState(false)
+  const [stdStagesError, setStdStagesError] = useState<string | null>(null)
+
+  function openStandardStagesModal() {
+    const existingNames = new Set(progressPayments.map(p => p.stage_name.toLowerCase()))
+    const missing = STANDARD_STAGES.filter(s => !existingNames.has(s.name.toLowerCase()))
+    setStdStagesForm(missing.map(s => ({ name: s.name, pct: String(s.pct) })))
+    setStdStagesError(null)
+    setShowStdStagesModal(true)
+  }
+
+  async function confirmStandardStages() {
+    const contract = property.construction_contract_amount
+    const total = stdStagesForm.reduce((s, r) => s + (parseFloat(r.pct) || 0), 0)
+    if (Math.abs(total - 100) > 0.01) { setStdStagesError(`Percentages must add up to 100% (currently ${total.toFixed(1)}%)`); return }
+    const invalid = stdStagesForm.find(r => !r.name.trim())
+    if (invalid) { setStdStagesError('All stages must have a name'); return }
+    setStdStagesSaving(true); setStdStagesError(null)
+    const inserted: ConstructionProgressPayment[] = []
+    for (const s of stdStagesForm) {
+      const pct = parseFloat(s.pct) || 0
+      const amount = contract ? Math.round((pct / 100) * contract) : null
+      const res = await fetch('/api/construction/progress-payments', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ propertyId: property.id, stage_name: s.name.trim(), amount, sort_order: 0 }),
+      })
+      const d = await res.json()
+      if (d.payment) inserted.push(d.payment)
+    }
+    await reorderAndSync([...progressPayments, ...inserted])
+    setStdStagesSaving(false)
+    setShowStdStagesModal(false)
+  }
+
   // ── Property lifecycle modals ──
   const [showActionsMenu, setShowActionsMenu] = useState(false)
   const [showSoldModal, setShowSoldModal] = useState(false)
@@ -3118,7 +3155,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                         </button>
                       )}
                       {missingStageCount > 0 && (
-                        <button onClick={loadStandardStages}
+                        <button onClick={openStandardStagesModal}
                           style={{ padding: '5px 11px', background: '#f0f2f7', border: 'none', borderRadius: 7, fontSize: 11.5, fontWeight: 700, cursor: 'pointer', color: '#5c6478' }}>
                           {progressPayments.length === 0 ? 'Load standard stages' : `+ ${missingStageCount} missing stage${missingStageCount > 1 ? 's' : ''}`}
                         </button>
@@ -7520,6 +7557,102 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
           </div>
         </div>
       )}
+
+      {/* ── Standard Stages Modal ──────────────────────────────────── */}
+      {showStdStagesModal && (() => {
+        const contract = property.construction_contract_amount
+        const total = stdStagesForm.reduce((s, r) => s + (parseFloat(r.pct) || 0), 0)
+        const totalOk = Math.abs(total - 100) < 0.01
+        const inp: React.CSSProperties = { padding: '7px 10px', border: '1px solid #e4e7f0', borderRadius: 7, fontSize: 13, color: '#1a1e2e', outline: 'none', boxSizing: 'border-box' }
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+            onClick={e => { if (e.target === e.currentTarget) setShowStdStagesModal(false) }}>
+            <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 540, boxShadow: '0 20px 60px rgba(0,0,0,.25)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+
+              {/* Header */}
+              <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e4e7f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+                <div>
+                  <h2 style={{ fontSize: 15, fontWeight: 800, margin: 0 }}>Progress Claim Stages</h2>
+                  <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 3 }}>Edit names and percentages before creating. Must add up to 100%.</div>
+                </div>
+                <button onClick={() => setShowStdStagesModal(false)} style={{ background: 'none', border: 'none', fontSize: 22, color: '#9ca3af', cursor: 'pointer', lineHeight: 1, padding: '0 4px' }}>×</button>
+              </div>
+
+              {/* Stage list */}
+              <div style={{ padding: '16px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+
+                {/* Column headers */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px auto auto', gap: 8, alignItems: 'center', paddingBottom: 4, borderBottom: '1px solid #f0f2f7' }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em' }}>Stage name</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em' }}>%</span>
+                  {contract && <span style={{ fontSize: 10.5, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em' }}>Amount</span>}
+                  <span />
+                </div>
+
+                {stdStagesForm.map((row, i) => {
+                  const pct = parseFloat(row.pct) || 0
+                  const amt = contract ? Math.round((pct / 100) * contract) : null
+                  return (
+                    <div key={i} style={{ display: 'grid', gridTemplateColumns: `1fr 90px${contract ? ' auto' : ''} auto`, gap: 8, alignItems: 'center' }}>
+                      <input
+                        value={row.name}
+                        onChange={e => setStdStagesForm(f => f.map((r, j) => j === i ? { ...r, name: e.target.value } : r))}
+                        placeholder="Stage name"
+                        style={{ ...inp, width: '100%' }}
+                      />
+                      <div style={{ position: 'relative' }}>
+                        <input
+                          value={row.pct}
+                          onChange={e => setStdStagesForm(f => f.map((r, j) => j === i ? { ...r, pct: e.target.value } : r))}
+                          placeholder="0"
+                          style={{ ...inp, width: '100%', paddingRight: 22, textAlign: 'right' }}
+                        />
+                        <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#9ca3af', pointerEvents: 'none' }}>%</span>
+                      </div>
+                      {contract && (
+                        <span style={{ fontSize: 12, color: '#5c6478', whiteSpace: 'nowrap', minWidth: 80 }}>
+                          {amt !== null ? formatCurrency(amt) : '—'}
+                        </span>
+                      )}
+                      <button onClick={() => setStdStagesForm(f => f.filter((_, j) => j !== i))}
+                        style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px' }}
+                        title="Remove stage">×</button>
+                    </div>
+                  )
+                })}
+
+                {/* Add custom stage */}
+                <button
+                  onClick={() => setStdStagesForm(f => [...f, { name: '', pct: '' }])}
+                  style={{ marginTop: 4, padding: '6px 12px', background: '#f0f2f7', border: '1px dashed #d1d5db', borderRadius: 7, fontSize: 12, fontWeight: 700, color: '#5c6478', cursor: 'pointer', textAlign: 'left' }}>
+                  + Add custom stage
+                </button>
+              </div>
+
+              {/* Footer — total + confirm */}
+              <div style={{ padding: '14px 24px', borderTop: '1px solid #e4e7f0', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: '#374151' }}>Total:</span>
+                  <span style={{ fontSize: 15, fontWeight: 900, color: totalOk ? '#15803d' : '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>{total.toFixed(1)}%</span>
+                  {!totalOk && <span style={{ fontSize: 11.5, color: '#b91c1c' }}>{total < 100 ? `${(100 - total).toFixed(1)}% short` : `${(total - 100).toFixed(1)}% over`}</span>}
+                  {totalOk && <span style={{ fontSize: 11.5, color: '#15803d' }}>✓</span>}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {stdStagesError && <span style={{ fontSize: 11.5, color: '#b91c1c', alignSelf: 'center' }}>{stdStagesError}</span>}
+                  <button onClick={() => setShowStdStagesModal(false)}
+                    style={{ padding: '8px 16px', background: '#f0f2f7', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', color: '#5c6478' }}>
+                    Cancel
+                  </button>
+                  <button onClick={confirmStandardStages} disabled={stdStagesSaving || !totalOk || stdStagesForm.length === 0}
+                    style={{ padding: '8px 18px', background: totalOk && stdStagesForm.length > 0 ? '#0369a1' : '#e5e7eb', color: totalOk && stdStagesForm.length > 0 ? '#fff' : '#9ca3af', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: totalOk && stdStagesForm.length > 0 ? 'pointer' : 'not-allowed' }}>
+                    {stdStagesSaving ? 'Creating…' : `Create ${stdStagesForm.length} stage${stdStagesForm.length !== 1 ? 's' : ''}`}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── Add / Edit Progress Payment Modal ─────────────────────── */}
       {ppModalOpen && (
