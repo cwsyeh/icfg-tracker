@@ -72,6 +72,12 @@ export default function AddPropertyModal({ onClose }: Props) {
 
   function nextFromConstruction() {
     if (!construction.land_value) { setError('Land value is required'); return }
+    // Auto-populate purchase step from construction — land value and contract date are the same
+    setPurchase(x => ({
+      ...x,
+      purchase_price: x.purchase_price || construction.land_value,
+      purchase_date: x.purchase_date || construction.land_settlement_date,
+    }))
     setError(null)
     setStep('purchase')
   }
@@ -315,22 +321,27 @@ export default function AddPropertyModal({ onClose }: Props) {
           {/* Step: Purchase details + acquisition costs */}
           {step === 'purchase' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {isHL && (
+                <div style={{ padding: '8px 12px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, fontSize: 12, color: '#166534' }}>
+                  Land price and contract date carried over from the previous step.
+                </div>
+              )}
+              {!isHL && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
-                  <label style={lbl}>{isHL ? 'Land contract date' : 'Contract date'} <span style={{ color: '#c8332a' }}>*</span></label>
+                  <label style={lbl}>Contract date <span style={{ color: '#c8332a' }}>*</span></label>
                   <input type="date" value={purchase.purchase_date} onChange={e => setPurchase(x => ({ ...x, purchase_date: e.target.value }))} style={{ ...s, ...(error?.includes('date') ? { borderColor: '#fca5a5' } : {}) }} />
                 </div>
-                {!isHL && (
-                  <div>
-                    <label style={lbl}>Settlement date</label>
-                    <input type="date" value={purchase.settlement_date} onChange={e => setPurchase(x => ({ ...x, settlement_date: e.target.value }))} style={s} />
-                  </div>
-                )}
                 <div>
-                  <label style={lbl}>{isHL ? 'Total purchase price (land)' : 'Purchase price'} <span style={{ color: '#c8332a' }}>*</span></label>
+                  <label style={lbl}>Settlement date</label>
+                  <input type="date" value={purchase.settlement_date} onChange={e => setPurchase(x => ({ ...x, settlement_date: e.target.value }))} style={s} />
+                </div>
+                <div>
+                  <label style={lbl}>Purchase price <span style={{ color: '#c8332a' }}>*</span></label>
                   <input type="number" step="1000" value={purchase.purchase_price} onChange={e => setPurchase(x => ({ ...x, purchase_price: e.target.value }))} style={{ ...s, ...(error?.includes('price') ? { borderColor: '#fca5a5' } : {}) }} placeholder="e.g. 750000" />
                 </div>
               </div>
+              )}
 
               {isOTP && (
                 <div>

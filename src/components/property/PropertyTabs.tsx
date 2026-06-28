@@ -961,29 +961,57 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
 
   // ── Standard stages modal ──
   const [showStdStagesModal, setShowStdStagesModal] = useState(false)
-  const [stdStagesForm, setStdStagesForm] = useState<{ name: string; pct: string }[]>([])
+  const [stdStagesForm, setStdStagesForm] = useState<{ name: string; pct: string; amt: string }[]>([])
   const [stdStagesSaving, setStdStagesSaving] = useState(false)
   const [stdStagesError, setStdStagesError] = useState<string | null>(null)
 
   function openStandardStagesModal() {
+    const contract = property.construction_contract_amount
     const existingNames = new Set(progressPayments.map(p => p.stage_name.toLowerCase()))
     const missing = STANDARD_STAGES.filter(s => !existingNames.has(s.name.toLowerCase()))
-    setStdStagesForm(missing.map(s => ({ name: s.name, pct: String(s.pct) })))
+    setStdStagesForm(missing.map(s => ({
+      name: s.name,
+      pct: String(s.pct),
+      amt: contract ? String(Math.round((s.pct / 100) * contract)) : '',
+    })))
     setStdStagesError(null)
     setShowStdStagesModal(true)
   }
 
+  function stdStageChangePct(i: number, val: string) {
+    const contract = property.construction_contract_amount
+    const pct = parseFloat(val)
+    setStdStagesForm(f => f.map((r, j) => j !== i ? r : {
+      ...r,
+      pct: val,
+      amt: contract && !isNaN(pct) ? String(Math.round((pct / 100) * contract)) : r.amt,
+    }))
+  }
+
+  function stdStageChangeAmt(i: number, val: string) {
+    const contract = property.construction_contract_amount
+    const amt = parseFloat(val)
+    setStdStagesForm(f => f.map((r, j) => j !== i ? r : {
+      ...r,
+      amt: val,
+      pct: contract && !isNaN(amt) ? ((amt / contract) * 100).toFixed(2) : r.pct,
+    }))
+  }
+
   async function confirmStandardStages() {
     const contract = property.construction_contract_amount
-    const total = stdStagesForm.reduce((s, r) => s + (parseFloat(r.pct) || 0), 0)
-    if (Math.abs(total - 100) > 0.01) { setStdStagesError(`Percentages must add up to 100% (currently ${total.toFixed(1)}%)`); return }
     const invalid = stdStagesForm.find(r => !r.name.trim())
     if (invalid) { setStdStagesError('All stages must have a name'); return }
+    if (contract) {
+      const total = stdStagesForm.reduce((s, r) => s + (parseFloat(r.pct) || 0), 0)
+      if (Math.abs(total - 100) > 0.01) { setStdStagesError(`Percentages must add up to 100% (currently ${total.toFixed(1)}%)`); return }
+    }
     setStdStagesSaving(true); setStdStagesError(null)
     const inserted: ConstructionProgressPayment[] = []
     for (const s of stdStagesForm) {
-      const pct = parseFloat(s.pct) || 0
-      const amount = contract ? Math.round((pct / 100) * contract) : null
+      const amt = parseFloat(s.amt)
+      const pct = parseFloat(s.pct)
+      const amount = !isNaN(amt) ? Math.round(amt) : contract && !isNaN(pct) ? Math.round((pct / 100) * contract) : null
       const res = await fetch('/api/construction/progress-payments', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ propertyId: property.id, stage_name: s.name.trim(), amount, sort_order: 0 }),
@@ -7582,44 +7610,44 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
               <div style={{ padding: '16px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
 
                 {/* Column headers */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px auto auto', gap: 8, alignItems: 'center', paddingBottom: 4, borderBottom: '1px solid #f0f2f7' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 110px 24px', gap: 8, alignItems: 'center', paddingBottom: 4, borderBottom: '1px solid #f0f2f7' }}>
                   <span style={{ fontSize: 10.5, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em' }}>Stage name</span>
-                  <span style={{ fontSize: 10.5, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em' }}>%</span>
-                  {contract && <span style={{ fontSize: 10.5, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em' }}>Amount</span>}
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em', textAlign: 'right' }}>%</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '.06em', textAlign: 'right' }}>Amount ($)</span>
                   <span />
                 </div>
 
-                {stdStagesForm.map((row, i) => {
-                  const pct = parseFloat(row.pct) || 0
-                  const amt = contract ? Math.round((pct / 100) * contract) : null
-                  return (
-                    <div key={i} style={{ display: 'grid', gridTemplateColumns: `1fr 90px${contract ? ' auto' : ''} auto`, gap: 8, alignItems: 'center' }}>
+                {stdStagesForm.map((row, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 110px 24px', gap: 8, alignItems: 'center' }}>
+                    <input
+                      value={row.name}
+                      onChange={e => setStdStagesForm(f => f.map((r, j) => j === i ? { ...r, name: e.target.value } : r))}
+                      placeholder="Stage name"
+                      style={{ ...inp, width: '100%' }}
+                    />
+                    <div style={{ position: 'relative' }}>
                       <input
-                        value={row.name}
-                        onChange={e => setStdStagesForm(f => f.map((r, j) => j === i ? { ...r, name: e.target.value } : r))}
-                        placeholder="Stage name"
-                        style={{ ...inp, width: '100%' }}
+                        value={row.pct}
+                        onChange={e => stdStageChangePct(i, e.target.value)}
+                        placeholder="0"
+                        style={{ ...inp, width: '100%', paddingRight: 20, textAlign: 'right' }}
                       />
-                      <div style={{ position: 'relative' }}>
-                        <input
-                          value={row.pct}
-                          onChange={e => setStdStagesForm(f => f.map((r, j) => j === i ? { ...r, pct: e.target.value } : r))}
-                          placeholder="0"
-                          style={{ ...inp, width: '100%', paddingRight: 22, textAlign: 'right' }}
-                        />
-                        <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#9ca3af', pointerEvents: 'none' }}>%</span>
-                      </div>
-                      {contract && (
-                        <span style={{ fontSize: 12, color: '#5c6478', whiteSpace: 'nowrap', minWidth: 80 }}>
-                          {amt !== null ? formatCurrency(amt) : '—'}
-                        </span>
-                      )}
-                      <button onClick={() => setStdStagesForm(f => f.filter((_, j) => j !== i))}
-                        style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px' }}
-                        title="Remove stage">×</button>
+                      <span style={{ position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: '#9ca3af', pointerEvents: 'none' }}>%</span>
                     </div>
-                  )
-                })}
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: '#9ca3af', pointerEvents: 'none' }}>$</span>
+                      <input
+                        value={row.amt}
+                        onChange={e => stdStageChangeAmt(i, e.target.value)}
+                        placeholder="—"
+                        style={{ ...inp, width: '100%', paddingLeft: 18, textAlign: 'right' }}
+                      />
+                    </div>
+                    <button onClick={() => setStdStagesForm(f => f.filter((_, j) => j !== i))}
+                      style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: 0 }}
+                      title="Remove stage">×</button>
+                  </div>
+                ))}
 
                 {/* Add custom stage */}
                 <button
@@ -7632,10 +7660,16 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
               {/* Footer — total + confirm */}
               <div style={{ padding: '14px 24px', borderTop: '1px solid #e4e7f0', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 700, color: '#374151' }}>Total:</span>
-                  <span style={{ fontSize: 15, fontWeight: 900, color: totalOk ? '#15803d' : '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>{total.toFixed(1)}%</span>
-                  {!totalOk && <span style={{ fontSize: 11.5, color: '#b91c1c' }}>{total < 100 ? `${(100 - total).toFixed(1)}% short` : `${(total - 100).toFixed(1)}% over`}</span>}
-                  {totalOk && <span style={{ fontSize: 11.5, color: '#15803d' }}>✓</span>}
+                  {contract ? (
+                    <>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, color: '#374151' }}>Total:</span>
+                      <span style={{ fontSize: 15, fontWeight: 900, color: totalOk ? '#15803d' : '#b91c1c', fontVariantNumeric: 'tabular-nums' }}>{total.toFixed(1)}%</span>
+                      {!totalOk && <span style={{ fontSize: 11.5, color: '#b91c1c' }}>{total < 100 ? `${(100 - total).toFixed(1)}% short` : `${(total - 100).toFixed(1)}% over`}</span>}
+                      {totalOk && <span style={{ fontSize: 11.5, color: '#15803d' }}>✓</span>}
+                    </>
+                  ) : (
+                    <span style={{ fontSize: 11.5, color: '#9ca3af' }}>No contract amount — enter amounts directly.</span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {stdStagesError && <span style={{ fontSize: 11.5, color: '#b91c1c', alignSelf: 'center' }}>{stdStagesError}</span>}
@@ -7643,8 +7677,8 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
                     style={{ padding: '8px 16px', background: '#f0f2f7', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', color: '#5c6478' }}>
                     Cancel
                   </button>
-                  <button onClick={confirmStandardStages} disabled={stdStagesSaving || !totalOk || stdStagesForm.length === 0}
-                    style={{ padding: '8px 18px', background: totalOk && stdStagesForm.length > 0 ? '#0369a1' : '#e5e7eb', color: totalOk && stdStagesForm.length > 0 ? '#fff' : '#9ca3af', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: totalOk && stdStagesForm.length > 0 ? 'pointer' : 'not-allowed' }}>
+                  <button onClick={confirmStandardStages} disabled={stdStagesSaving || (!!contract && !totalOk) || stdStagesForm.length === 0}
+                    style={{ padding: '8px 18px', background: (!contract || totalOk) && stdStagesForm.length > 0 ? '#0369a1' : '#e5e7eb', color: (!contract || totalOk) && stdStagesForm.length > 0 ? '#fff' : '#9ca3af', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: (!contract || totalOk) && stdStagesForm.length > 0 ? 'pointer' : 'not-allowed' }}>
                     {stdStagesSaving ? 'Creating…' : `Create ${stdStagesForm.length} stage${stdStagesForm.length !== 1 ? 's' : ''}`}
                   </button>
                 </div>
