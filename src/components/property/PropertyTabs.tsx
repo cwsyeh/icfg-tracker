@@ -7651,7 +7651,7 @@ export default function PropertyTabs({ property, sharePercentage, valuations, lo
 
                 {/* Add custom stage */}
                 <button
-                  onClick={() => setStdStagesForm(f => [...f, { name: '', pct: '' }])}
+                  onClick={() => setStdStagesForm(f => [...f, { name: '', pct: '', amt: '' }])}
                   style={{ marginTop: 4, padding: '6px 12px', background: '#f0f2f7', border: '1px dashed #d1d5db', borderRadius: 7, fontSize: 12, fontWeight: 700, color: '#5c6478', cursor: 'pointer', textAlign: 'left' }}>
                   + Add custom stage
                 </button>

@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
   // Verify loan belongs to this property
   const { data: loan } = await adminSupabase
     .from('loans')
-    .select('id, role')
+    .select('id')
     .eq('id', loanId)
     .eq('tax_property_id', propertyId)
     .single()

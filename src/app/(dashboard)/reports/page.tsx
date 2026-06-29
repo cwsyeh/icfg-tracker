@@ -61,19 +61,19 @@ export default async function Reports() {
     { data: progressPayments },
     { data: saleCosts },
   ] = await Promise.all([
-    supabase.from('valuations').select('*').in('property_id', propertyIds).order('valuation_date', { ascending: false }),
-    supabase.from('loans').select('*').in('tax_property_id', propertyIds),
+    supabase.from('valuations').select('*').in('property_id', propertyIds).order('valuation_date', { ascending: false }).range(0, 9999),
+    supabase.from('loans').select('*').in('tax_property_id', propertyIds).range(0, 9999),
     fetchAllTransactions(supabase, propertyIds),
-    supabase.from('depreciation_schedules').select('*').in('property_id', propertyIds),
-    supabase.from('property_acquisition_costs').select('*').in('property_id', propertyIds),
-    supabase.from('construction_progress_payments').select('*').in('property_id', propertyIds).order('sort_order', { ascending: true }),
-    supabase.from('property_sale_costs').select('*').in('property_id', propertyIds),
+    supabase.from('depreciation_schedules').select('*').in('property_id', propertyIds).range(0, 9999),
+    supabase.from('property_acquisition_costs').select('*').in('property_id', propertyIds).range(0, 9999),
+    supabase.from('construction_progress_payments').select('*').in('property_id', propertyIds).order('sort_order', { ascending: true }).range(0, 9999),
+    supabase.from('property_sale_costs').select('*').in('property_id', propertyIds).range(0, 9999),
   ])
 
   // Fetch loan securities for all loans
   const loanIds = (loans ?? []).map(l => l.id)
   const { data: loanSecurities } = loanIds.length > 0
-    ? await supabase.from('loan_securities').select('*').in('loan_id', loanIds)
+    ? await supabase.from('loan_securities').select('*').in('loan_id', loanIds).range(0, 9999)
     : { data: [] as LoanSecurity[] }
 
   // Build property name lookup for securities display

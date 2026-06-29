@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { label: 'Portfolio', href: '/portfolio' },
   { label: 'Properties', href: '/properties' },
   { label: 'Cashflow', href: '/cashflow' },
+  { label: 'Finance', href: '/finance' },
   { label: 'Reports', href: '/reports' },
   { label: 'Settings', href: '/settings' },
 ]

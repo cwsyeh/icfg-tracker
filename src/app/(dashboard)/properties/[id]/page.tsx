@@ -3,6 +3,7 @@ import { redirect, notFound } from 'next/navigation'
 import { calculateLoanBalance, getIOExpiryDate, formatCurrency } from '@/lib/utils/finance'
 import type { Property, Loan, Valuation, Transaction, DepreciationSchedule, PropertyOwner, LoanBalance, LoanSecurity } from '@/lib/types/database'
 import PropertyTabs from '@/components/property/PropertyTabs'
+import { fetchAll } from '@/lib/supabase/paginate'
 
 export default async function PropertyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -20,30 +21,32 @@ export default async function PropertyPage({ params }: { params: Promise<{ id: s
 
   if (!ownership) notFound()
 
-  // Fetch all property data in parallel
+  // Fetch all property data in parallel — use fetchAll for transactions (can exceed 1000 rows)
   const [
     { data: property },
     { data: valuations },
     { data: loans },
-    { data: transactions },
+    transactions,
     { data: depreciation },
   ] = await Promise.all([
     supabase.from('properties').select('*').eq('id', id).single(),
-    supabase.from('valuations').select('*').eq('property_id', id).order('valuation_date', { ascending: false }),
-    supabase.from('loans').select('*').eq('tax_property_id', id).order('start_date', { ascending: true }),
-    supabase.from('transactions').select('*').eq('property_id', id).order('transaction_date', { ascending: false }),
-    supabase.from('depreciation_schedules').select('*').eq('property_id', id).order('financial_year', { ascending: false }),
+    supabase.from('valuations').select('*').eq('property_id', id).order('valuation_date', { ascending: false }).range(0, 9999),
+    supabase.from('loans').select('*').eq('tax_property_id', id).order('start_date', { ascending: true }).range(0, 9999),
+    fetchAll<Transaction>((from, to) =>
+      supabase.from('transactions').select('*').eq('property_id', id).order('transaction_date', { ascending: false }).range(from, to)
+    ),
+    supabase.from('depreciation_schedules').select('*').eq('property_id', id).order('financial_year', { ascending: false }).range(0, 9999),
   ])
 
   const loanIds = (loans ?? []).map((l: Loan) => l.id)
 
   const { data: loanBalances } = loanIds.length > 0
-    ? await supabase.from('loan_balances').select('*').in('loan_id', loanIds).order('balance_date', { ascending: true })
+    ? await supabase.from('loan_balances').select('*').in('loan_id', loanIds).order('balance_date', { ascending: true }).range(0, 9999)
     : { data: [] }
 
   // Loan securities (which properties secure which loan)
   const { data: loanSecurities } = loanIds.length > 0
-    ? await supabase.from('loan_securities').select('*').in('loan_id', loanIds)
+    ? await supabase.from('loan_securities').select('*').in('loan_id', loanIds).range(0, 9999)
     : { data: [] }
 
   // All properties the user owns (for security editor dropdown)

@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
 
   // Verify loan belongs to this property
   const { data: loan } = await adminSupabase
-    .from('loans').select('id, role').eq('id', loanId).eq('tax_property_id', propertyId).single()
+    .from('loans').select('id').eq('id', loanId).eq('tax_property_id', propertyId).single()
   if (!loan) return NextResponse.json({ error: 'Loan not found' }, { status: 404 })
 
   // Replace loan_securities: delete existing, insert new

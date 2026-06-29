@@ -54,28 +54,32 @@ async function buildPropertyReports(
     transactions,
     { data: depreciation },
     { data: acquisitionCosts },
-    { data: loanSecurities },
     { data: progressPayments },
     { data: saleCosts },
   ] = await Promise.all([
-    supabase.from('valuations').select('*').in('property_id', propertyIds).order('valuation_date', { ascending: false }),
-    supabase.from('loans').select('*').in('tax_property_id', propertyIds),
+    supabase.from('valuations').select('*').in('property_id', propertyIds).order('valuation_date', { ascending: false }).range(0, 9999),
+    supabase.from('loans').select('*').in('tax_property_id', propertyIds).range(0, 9999),
     fetchAllTransactionsPdf(supabase, propertyIds),
-    supabase.from('depreciation_schedules').select('*').in('property_id', propertyIds),
-    supabase.from('property_acquisition_costs').select('*').in('property_id', propertyIds),
-    supabase.from('loan_securities').select('*'),
-    supabase.from('construction_progress_payments').select('*').in('property_id', propertyIds).order('sort_order', { ascending: true }),
-    supabase.from('property_sale_costs').select('*').in('property_id', propertyIds),
+    supabase.from('depreciation_schedules').select('*').in('property_id', propertyIds).range(0, 9999),
+    supabase.from('property_acquisition_costs').select('*').in('property_id', propertyIds).range(0, 9999),
+    supabase.from('construction_progress_payments').select('*').in('property_id', propertyIds).order('sort_order', { ascending: true }).range(0, 9999),
+    supabase.from('property_sale_costs').select('*').in('property_id', propertyIds).range(0, 9999),
   ])
 
   const allLoanIds = (loans ?? []).map(l => l.id)
+
+  // Fetch loan_securities filtered to this user's loans (previously unfiltered — security bug)
+  const { data: loanSecurities } = allLoanIds.length > 0
+    ? await supabase.from('loan_securities').select('*').in('loan_id', allLoanIds).range(0, 9999)
+    : { data: [] }
+
   const propNameMap = new Map<string, string>()
   ;(ownerships ?? []).forEach(o => {
     const prop = o.properties as unknown as Property
     propNameMap.set(prop.id, prop.name)
   })
   const propSecuritiesMap = new Map<string, { propertyId: string; propertyName: string }[]>()
-  ;(loanSecurities ?? []).filter(s => allLoanIds.includes(s.loan_id)).forEach(s => {
+  ;(loanSecurities ?? []).forEach(s => {
     const name = propNameMap.get(s.property_id) ?? s.property_id
     if (!propSecuritiesMap.has(s.loan_id)) propSecuritiesMap.set(s.loan_id, [])
     propSecuritiesMap.get(s.loan_id)!.push({ propertyId: s.property_id, propertyName: name })

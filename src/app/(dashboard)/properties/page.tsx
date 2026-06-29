@@ -33,8 +33,8 @@ export default async function PropertiesPage() {
   const propertyIds = (ownerships ?? []).map(o => (o.properties as unknown as Property).id)
 
   const [{ data: valuations }, { data: loans }] = await Promise.all([
-    supabase.from('valuations').select('*').in('property_id', propertyIds).order('valuation_date', { ascending: false }),
-    supabase.from('loans').select('*').in('tax_property_id', propertyIds),
+    supabase.from('valuations').select('*').in('property_id', propertyIds).order('valuation_date', { ascending: false }).range(0, 9999),
+    supabase.from('loans').select('*').in('tax_property_id', propertyIds).range(0, 9999),
   ])
 
   type PropRow = Property & {
